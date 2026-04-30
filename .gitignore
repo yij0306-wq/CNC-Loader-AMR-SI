@@ -1,0 +1,14 @@
+# 구버전 파일 제외
+index_v*.html
+script_v*.js
+styles_v*.css
+main_v*.py
+main.py
+script.js.bak
+
+# 기타
+*.pptx
+*.mp4
+*.jpg
+*.png
+*.py

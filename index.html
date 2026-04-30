@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMR 물류이송 시뮬레이션 V20</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <div class="title-group">
+                <h1>AMR 물류이송 시뮬레이션 V20</h1>
+                <div class="stats-panel">
+                    <div class="stat-box"><span style="color:#60a5fa">M3 5X</span> <span id="prod-m3-5x" class="count">0</span></div>
+                    <div class="stat-box"><span style="color:#34d399">M3 UPPER</span> <span id="prod-m3-upper" class="count">0</span></div>
+                    <div class="stat-box"><span style="color:#a78bfa">M3 2ND</span> <span id="prod-m3-2nd" class="count">0</span></div>
+                    <button id="btn-reset" class="btn btn-danger">초기화</button>
+                </div>
+            </div>
+            <div class="controls-panel">
+                <div class="controls-group">
+                    <span class="label">Speed</span>
+                    <button id="btn-1x" class="btn active">1x</button>
+                    <button id="btn-2x" class="btn">2x</button>
+                    <button id="btn-5x" class="btn">5x</button>
+                    <button id="btn-10x" class="btn">10x</button>
+                </div>
+                <div class="controls-group">
+                    <span class="label">호출 모드</span>
+                    <button id="btn-mode-8" class="btn active">8칸 완료시</button>
+                    <button id="btn-mode-custom" class="btn">지정 칸수</button>
+                    <input type="number" id="input-custom-trays" min="1" max="7" value="5" class="input-number" title="지정 칸수">
+                </div>
+                <div class="controls-group">
+                    <span class="label">우선순위 룰</span>
+                    <select id="select-priority" class="select-box">
+                        <option value="LOADED_YIELDS">적재차량 양보 (기본)</option>
+                        <option value="ID_PRIORITY">호기 번호순 우선</option>
+                        <option value="MAIN_LANE_DIST">중앙통로 거리 우선</option>
+                    </select>
+                </div>
+                <div class="controls-group">
+                    <span class="label">경로 라인</span>
+                    <button id="btn-lane1" class="btn active">투입 1라인</button>
+                    <button id="btn-lane2" class="btn">+배출 2라인 추가</button>
+                </div>
+                <div class="controls-group">
+                    <span class="label">접근금지</span>
+                    <button id="btn-excl-on" class="btn active">엔리어 활성</button>
+                    <button id="btn-excl-off" class="btn">엔리어 해제</button>
+                </div>
+                <div class="controls-group">
+                    <span class="label">회피 모드</span>
+                    <button id="btn-evade-cnc" class="btn btn-evade active">CNC 도킹존 회피</button>
+                    <button id="btn-evade-siding" class="btn btn-evade">회피존만 사용</button>
+                    <button id="btn-evade-both" class="btn btn-evade">둘다 사용</button>
+                </div>
+                <div class="controls-group">
+                    <span class="label">AMR 대수</span>
+                    <button id="btn-amr1" class="btn active">1대</button>
+                    <button id="btn-amr2" class="btn">2대</button>
+                    <button id="btn-amr3" class="btn">3대</button>
+                    <button id="btn-amr4" class="btn">4대</button>
+                </div>
+            </div>
+        </header>
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="2000" height="750"></canvas>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
