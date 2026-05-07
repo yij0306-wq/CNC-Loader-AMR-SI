@@ -180,3 +180,115 @@ canvas {
     color: white;
     box-shadow: 0 4px 6px -1px rgba(124,58,237,0.3);
 }
+
+/* Loader Settings Grid */
+.loader-grid {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+.loader-setting {
+    background: #ffffff;
+    padding: 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    border: 1px solid #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 125px;
+}
+.loader-setting-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    color: #0f172a;
+}
+.loader-setting select {
+    width: 100%;
+    font-size: 12px;
+    padding: 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+.loader-setting input {
+    width: 45px;
+    font-size: 12px;
+    padding: 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    box-sizing: border-box;
+    text-align: right;
+}
+.loader-setting .btn-toggle {
+    margin-top: 4px;
+    width: 100%;
+    padding: 4px;
+    font-size: 11px;
+}
+
+/* AMR Settings Grid */
+.amr-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-bottom: 10px;
+}
+.amr-setting {
+    background: #f1f5f9;
+    padding: 10px 15px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.amr-setting-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    font-size: 13px;
+}
+.amr-battery-bar-container {
+    height: 8px;
+    background: #cbd5e1;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.amr-battery-bar {
+    height: 100%;
+    background: #10b981;
+    transition: width 0.3s, background-color 0.3s;
+}
+.amr-battery-info {
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+    color: #475569;
+}
+.amr-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: #475569;
+}
+.amr-controls .btn-small {
+    padding: 2px 6px;
+    font-size: 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    cursor: pointer;
+    background: #fff;
+}
+
+.status-on { color: #10b981; }
+.status-off { color: #ef4444; }

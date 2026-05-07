@@ -3,15 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMR 물류이송 시뮬레이션 V20</title>
+    <title>AMR 물류이송 시뮬레이션 V27</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="dashboard">
         <header>
             <div class="title-group">
-                <h1>AMR 물류이송 시뮬레이션 V20</h1>
+                <h1>AMR 물류이송 시뮬레이션 V27</h1>
                 <div class="stats-panel">
+                    <div class="stat-box" style="background:#334155; border:1px solid #475569;"><span style="color:#fcd34d">물류 부하율</span> <span id="val-load" class="count" style="color:#fff">0%</span></div>
+                    <div class="stat-box" style="background:#334155; border:1px solid #475569;"><span style="color:#fcd34d">누적 대기시간</span> <span id="val-wait" class="count" style="color:#fff">0s</span></div>
                     <div class="stat-box"><span style="color:#60a5fa">M3 5X</span> <span id="prod-m3-5x" class="count">0</span></div>
                     <div class="stat-box"><span style="color:#34d399">M3 UPPER</span> <span id="prod-m3-upper" class="count">0</span></div>
                     <div class="stat-box"><span style="color:#a78bfa">M3 2ND</span> <span id="prod-m3-2nd" class="count">0</span></div>
@@ -21,6 +23,7 @@
             <div class="controls-panel">
                 <div class="controls-group">
                     <span class="label">Speed</span>
+                    <button id="btn-pause" class="btn">⏸</button>
                     <button id="btn-1x" class="btn active">1x</button>
                     <button id="btn-2x" class="btn">2x</button>
                     <button id="btn-5x" class="btn">5x</button>
@@ -28,9 +31,9 @@
                 </div>
                 <div class="controls-group">
                     <span class="label">호출 모드</span>
-                    <button id="btn-mode-8" class="btn active">8칸 완료시</button>
-                    <button id="btn-mode-custom" class="btn">지정 칸수</button>
-                    <input type="number" id="input-custom-trays" min="1" max="7" value="5" class="input-number" title="지정 칸수">
+                    <button id="btn-mode-8" class="btn active">지정 완료시</button>
+                    <button id="btn-mode-custom" class="btn">수동 칸수</button>
+                    <input type="number" id="input-custom-trays" min="1" max="10" value="5" class="input-number" title="지정 칸수">
                 </div>
                 <div class="controls-group">
                     <span class="label">우선순위 룰</span>
@@ -44,11 +47,6 @@
                     <span class="label">경로 라인</span>
                     <button id="btn-lane1" class="btn active">투입 1라인</button>
                     <button id="btn-lane2" class="btn">+배출 2라인 추가</button>
-                </div>
-                <div class="controls-group">
-                    <span class="label">접근금지</span>
-                    <button id="btn-excl-on" class="btn active">엔리어 활성</button>
-                    <button id="btn-excl-off" class="btn">엔리어 해제</button>
                 </div>
                 <div class="controls-group">
                     <span class="label">회피 모드</span>
@@ -65,8 +63,10 @@
                 </div>
             </div>
         </header>
+        <div class="loader-grid" id="loaderGrid"></div>
+        <div class="amr-grid" id="amrGrid"></div>
         <div class="canvas-container">
-            <canvas id="simCanvas" width="2000" height="750"></canvas>
+            <canvas id="simCanvas" width="2600" height="750"></canvas>
         </div>
     </div>
     <script src="script.js"></script>
