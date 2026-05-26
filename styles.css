@@ -109,6 +109,7 @@ h1 {
 .controls-panel {
     display: flex;
     gap: 20px;
+    flex-wrap: wrap;
 }
 
 .controls-group {
@@ -216,6 +217,59 @@ canvas {
     border-color: #7c3aed;
     color: white;
     box-shadow: 0 4px 6px -1px rgba(124,58,237,0.3);
+}
+
+/* ★ 신규: 중앙통로 속도제한 컨트롤 그룹 스타일 */
+.corr-speed-group {
+    background: rgba(14, 116, 144, 0.08);
+    border: 1.5px solid #0e7490;
+    position: relative;
+    overflow: visible;
+}
+
+.corr-speed-group.active-limit {
+    background: rgba(14, 116, 144, 0.15);
+    border-color: #06b6d4;
+    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+    animation: corrPulse 2s ease-in-out infinite;
+}
+
+@keyframes corrPulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2); }
+    50% { box-shadow: 0 0 0 5px rgba(6, 182, 212, 0.35); }
+}
+
+/* 중앙통로 배속 상태 뱃지 */
+.corr-speed-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    transition: all 0.3s ease;
+}
+
+.corr-speed-off {
+    background: #e2e8f0;
+    color: #94a3b8;
+    border: 1px solid #cbd5e1;
+}
+
+.corr-speed-on {
+    background: linear-gradient(135deg, #06b6d4, #0e7490);
+    color: #ffffff;
+    border: 1px solid #0891b2;
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4);
+    animation: badgePop 0.3s ease-out;
+}
+
+@keyframes badgePop {
+    0% { transform: scale(0.8); }
+    70% { transform: scale(1.1); }
+    100% { transform: scale(1.0); }
 }
 
 /* Loader Settings Grid */

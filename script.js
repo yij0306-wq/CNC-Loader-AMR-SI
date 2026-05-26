@@ -102,6 +102,46 @@ let is_paused = true;
 let stats = { calls: 0, totalWait: 0 };
 let evade_detect_range = 120;
 
+// ★ [CorrSpeed] 중앙통로 1배속 제한 기능
+// corr_speed_amr_count: 0이면 비활성, 1~4이면 해당 수 이하 id의 AMR이 중앙통로 진입 시 1배속 적용
+let corr_speed_amr_count = 0; // 0 = 비활성화
+const CORR_LANE_THRESHOLD = 25; // 중앙통로(AMR_LANE_Y) ±px 범위를 중앙통로로 판단
+
+// AMR이 중앙통로를 이동 중인지 판단하는 함수
+function isInCorridor(amr) {
+    // Y좌표가 AMR_LANE_Y 근처(중앙통로) AND 수직 이동 상태가 아닌 경우
+    const onLane = Math.abs(amr.pos.y - AMR_LANE_Y) <= CORR_LANE_THRESHOLD;
+    // 수직 이동(도킹/언도킹) 중인 상태는 중앙통로 이동이 아님
+    const verticalStates = ['TO_CHARGE_DOCK','FROM_CHARGE_DOCK','ENTERING_BAY','EXITING_BAY',
+        'ENTERING_INPUT','EXIT_INPUT_SIDE','TO_INPUT_LANE_UP','DOCKING_IN','DOCKING_OUT',
+        'TO_OUTPUT_DOCK','EXIT_OUTPUT_SIDE','FROM_OUTPUT_DOCK','EVADING_UP','EVADING_DOWN'];
+    const isVertical = verticalStates.includes(amr.state);
+    return onLane && !isVertical;
+}
+
+// AMR에 중앙통로 속도제한이 적용되는지 판단
+function isCorrSpeedLimited(amr) {
+    if (corr_speed_amr_count <= 0) return false; // 비활성
+    if (amr.id >= corr_speed_amr_count) return false; // 대상 AMR 수 초과
+    return isInCorridor(amr);
+}
+
+// 중앙통로 속도제한 UI 뱃지 업데이트
+function updateCorrSpeedBadge() {
+    const badge = document.getElementById('corr-speed-status');
+    const group = document.getElementById('corrSpeedGroup');
+    if (!badge || !group) return;
+    if (corr_speed_amr_count > 0) {
+        badge.textContent = `ON (AMR ${corr_speed_amr_count}대)`;
+        badge.className = 'corr-speed-badge corr-speed-on';
+        group.classList.add('active-limit');
+    } else {
+        badge.textContent = 'OFF';
+        badge.className = 'corr-speed-badge corr-speed-off';
+        group.classList.remove('active-limit');
+    }
+}
+
 // V35 핵심 로직: 배출칸수-1칸(CALLING) 및 배출칸수(DONE) 상태 로더가 후보
 // 우선순위: DONE > CALLING > 피스(Pieces) 많은 순 > 대기시간 > 모델 밸런스
 function getBestLoader(candidates) {
@@ -952,11 +992,19 @@ case 'TO_CHARGE_DOCK': {
     
     draw(ctx){
         ctx.save(); ctx.translate(this.pos.x,this.pos.y);
-        ctx.shadowColor='rgba(0,0,0,0.3)'; ctx.shadowBlur=8;
+
+        // ★ [CorrSpeed] 중앙통로 1배속 제한 중인 AMR 테두리 강조
+        const corrLimited = isCorrSpeedLimited(this);
+        ctx.shadowColor = corrLimited ? 'rgba(6,182,212,0.6)' : 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = corrLimited ? 14 : 8;
+
         let g=ctx.createLinearGradient(-25,-15,25,15);
         g.addColorStop(0,'#f8fafc'); g.addColorStop(1,'#cbd5e1');
         ctx.fillStyle=g; ctx.beginPath(); ctx.roundRect(-25,-18,50,36,6); ctx.fill();
-        ctx.shadowBlur=0; ctx.lineWidth=2; ctx.strokeStyle='#475569'; ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.lineWidth = corrLimited ? 2.5 : 2;
+        ctx.strokeStyle = corrLimited ? '#06b6d4' : '#475569';
+        ctx.stroke();
         
         // 바퀴 및 조명 효과
         ctx.fillStyle='#0f172a'; ctx.fillRect(15,-10,10,20); ctx.fillRect(-25,-10,10,20);
@@ -985,6 +1033,16 @@ case 'TO_CHARGE_DOCK': {
             let lbl='A'+(this.id+1);
             ctx.fillText(lbl,0,0);
         }
+
+        // ★ [CorrSpeed] 1배속 제한 중 AMR 위에 배지 표시
+        if (corrLimited) {
+            ctx.fillStyle = '#06b6d4';
+            ctx.beginPath(); ctx.roundRect(-12, -30, 24, 14, 4); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.font = '800 9px Inter';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('1x', 0, -23);
+        }
+
         ctx.restore();
     }
 }
@@ -1147,14 +1205,21 @@ function init(){
 }
 
 function update(dt){
-    let sim_dt = dt * manager.speed;
+    // ★ [CorrSpeed] 중앙통로에 있는 지정 AMR 수가 설정값과 일치할 때만 1배속 조건 성립
+    // 예) 2대 설정 → AMR#1과 AMR#2가 동시에 중앙통로에 있어야 1배속 적용
+    const corrInCount = amrs.filter(a => a.id < corr_speed_amr_count && isInCorridor(a)).length;
+    const corrActive = corr_speed_amr_count > 0 && corrInCount >= corr_speed_amr_count;
+
+    // corrActive=true 이면 sim_dt=dt(1배속), false 이면 설정 배속 그대로
+    let sim_dt = corrActive ? dt : dt * manager.speed;
+
     manager.update(sim_dt);
     if (!manager.paused && manager.mode === 'FORWARD') {
-        ldrs.forEach(l=>l.update(sim_dt));
-        let loadFactor = runAnalysis(sim_dt);
-        amrs.forEach(a=>a.update(manager,amrs,ldrs,loadFactor,sim_dt));
+        ldrs.forEach(l => l.update(sim_dt));          // 로더 생산 타임 동기화
+        let loadFactor = runAnalysis(sim_dt);         // 분석/UI 업데이트
+        amrs.forEach(a => a.update(manager, amrs, ldrs, loadFactor, sim_dt)); // 모든 AMR 동기화
     } else {
-        runAnalysis(0); // [변경] 정지 상태에서도 UI(배터리 등) 갱신
+        runAnalysis(0); // 정지 상태에서도 UI(배터리 등) 갱신
         if (!manager.paused && manager.mode === 'REVERSE') {
             // manager.update 내에서 rewind() 수행됨
         }
@@ -1356,6 +1421,23 @@ document.getElementById('btn-500x').addEventListener('click',e=>{manager.speed=5
 // [NEW] 조업 목표 시간 설정 리스너
 document.getElementById('select-target-time').addEventListener('change', e => {
     manager.targetHours = parseInt(e.target.value);
+});
+
+// ★ [CorrSpeed] 중앙통로 1배속 AMR 수 설정 리스너
+document.getElementById('input-corr-amr-count').addEventListener('change', e => {
+    let val = parseInt(e.target.value);
+    if (isNaN(val) || val < 0) val = 0;
+    if (val > 4) val = 4;
+    corr_speed_amr_count = val;
+    e.target.value = val;
+    updateCorrSpeedBadge();
+});
+document.getElementById('input-corr-amr-count').addEventListener('input', e => {
+    let val = parseInt(e.target.value);
+    if (isNaN(val) || val < 0) val = 0;
+    if (val > 4) val = 4;
+    corr_speed_amr_count = val;
+    updateCorrSpeedBadge();
 });
 
 // V32: 호출칸수 입력 (1~9 범위, 목표단수와 상호호환)

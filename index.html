@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMR 물류이송 시뮬레이션 V40 - Layout Update</title>
+    <title>AMR 물류이송 시뮬레이션 V40 - CorrSpeed</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="dashboard">
         <header>
             <div class="title-group">
-                <h1>AMR 물류이송 시뮬레이션 V40 - Layout Update</h1>
+                <h1>AMR 물류이송 시뮬레이션 V40 - CorrSpeed</h1>
                 <div class="clock-panel">
                     <div class="clock-box"><span class="clock-label">SIMULATION TIME</span> <span id="clock-env" class="clock-time">00:00:00</span></div>
                     <div class="clock-box" style="margin-top:5px; background:#1e293b; border-color:#334155;"><span class="clock-label" style="color:#fcd34d">LOADER WAIT</span> <span id="val-wait" class="clock-time" style="color:#fff">00:00:00</span></div>
@@ -40,6 +40,16 @@
                     <button id="btn-200x" class="btn">200x</button>
                     <button id="btn-500x" class="btn">500x</button>
                 </div>
+
+                <!-- ★ 신규: 중앙통로 속도제한 AMR 설정 컨트롤 -->
+                <div class="controls-group corr-speed-group" id="corrSpeedGroup">
+                    <span class="label" style="color:#0e7490; font-weight:800;">🛣️ 중앙통로 1배속</span>
+                    <span style="color:#64748b; font-size:12px;">AMR</span>
+                    <input type="number" id="input-corr-amr-count" min="0" max="4" value="0" class="input-number" title="중앙통로 진입 시 1배속으로 제한할 AMR 수 (0=비활성화)">
+                    <span style="color:#64748b; font-size:12px;">대</span>
+                    <span id="corr-speed-status" class="corr-speed-badge corr-speed-off">OFF</span>
+                </div>
+
                 <div class="controls-group" style="background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 6px; padding: 0 10px;">
                     <span class="label" style="color:#2563eb; font-weight:800;">🎯 조업 목표</span>
                     <select id="select-target-time" class="select-box" style="width:100px; border-color:#3b82f6;">
