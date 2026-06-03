@@ -1,6 +1,9 @@
 const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
 
+const cncImg = new Image();
+cncImg.src = 'cnc_icon.png';
+
 const WIDTH = 2800;
 const HEIGHT = 750;
 const NUM_LOADER = 16;
@@ -501,6 +504,17 @@ class Loader {
             ctx.fillText('LOADER-'+(this.id+1),this.x, ty);
             
             if(this.id >= 13){ ctx.translate(this.x, this.y); ctx.scale(1, -1); ctx.translate(-this.x, -this.y); }
+            if (cncImg && cncImg.complete) {
+                ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
+                ctx.drawImage(cncImg, this.x+17, this.y-25, 65, 55);
+            } else {
+                ctx.fillStyle='rgba(226, 232, 240, 0.8)'; ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.5;
+                ctx.fillRect(this.x-17-65, this.y-25, 65, 55);
+                ctx.strokeRect(this.x-17-65, this.y-25, 65, 55);
+                ctx.fillRect(this.x+17, this.y-25, 65, 55);
+                ctx.strokeRect(this.x+17, this.y-25, 65, 55);
+            }
+
             ctx.fillStyle='#cbd5e1';
             ctx.beginPath(); ctx.roundRect(this.x-17,this.y-25,34,75,4); ctx.fill();
             ctx.fillStyle='#ef4444'; ctx.font='bold 12px Inter';
@@ -516,14 +530,17 @@ class Loader {
             ctx.translate(-this.x, -this.y);
         }
         
-        // CNC 설비 박스 (좌/우 1250x1400mm -> 약 49x55px)
-        ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
-        // 좌측 CNC
-        ctx.fillRect(this.x-17-49, this.y-25, 49, 55);
-        ctx.strokeRect(this.x-17-49, this.y-25, 49, 55);
-        // 우측 CNC
-        ctx.fillRect(this.x+17, this.y-25, 49, 55);
-        ctx.strokeRect(this.x+17, this.y-25, 49, 55);
+        // CNC 설비 이미지 (좌/우 약 65x55px)
+        if (cncImg && cncImg.complete) {
+            ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
+            ctx.drawImage(cncImg, this.x+17, this.y-25, 65, 55);
+        } else {
+            ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
+            ctx.fillRect(this.x-17-65, this.y-25, 65, 55);
+            ctx.strokeRect(this.x-17-65, this.y-25, 65, 55);
+            ctx.fillRect(this.x+17, this.y-25, 65, 55);
+            ctx.strokeRect(this.x+17, this.y-25, 65, 55);
+        }
 
         // 75px 높이, 34px 폭(860mm) 로더 본체
         let g=ctx.createLinearGradient(this.x-17,this.y-25,this.x+17,this.y+50);
@@ -1800,9 +1817,13 @@ function draw(){
         ctx.translate(x, y); ctx.scale(1, -1); ctx.translate(-x, -y);
         ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
         // 좌측 CNC
-        ctx.fillRect(x-17-49, y-25, 49, 55); ctx.strokeRect(x-17-49, y-25, 49, 55);
-        // 우측 CNC
-        ctx.fillRect(x+17, y-25, 49, 55); ctx.strokeRect(x+17, y-25, 49, 55);
+        if (cncImg && cncImg.complete) {
+            ctx.drawImage(cncImg, x-17-65, y-25, 65, 55);
+            ctx.drawImage(cncImg, x+17, y-25, 65, 55);
+        } else {
+            ctx.fillRect(x-17-65, y-25, 65, 55); ctx.strokeRect(x-17-65, y-25, 65, 55);
+            ctx.fillRect(x+17, y-25, 65, 55); ctx.strokeRect(x+17, y-25, 65, 55);
+        }
         ctx.restore();
     }
 
@@ -2039,6 +2060,10 @@ document.getElementById('btn-soft-reset').addEventListener('click',()=>{
 
 document.getElementById('btn-hard-reset').addEventListener('click',()=>{
     hardReset();
+});
+
+document.getElementById('btn-toggle-bg').addEventListener('click', () => {
+    document.querySelector('.canvas-container').classList.toggle('simple-bg');
 });
 
 init();

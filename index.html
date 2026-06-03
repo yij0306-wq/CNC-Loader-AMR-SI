@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMR 물류이송 시뮬레이션 V42 - 최종버전10</title>
+    <title>AMR 물류이송 시뮬레이션 V44 - AddCAD</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,7 +11,7 @@
         <header>
             <div class="title-group">
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <h1 style="margin:0;">AMR 물류이송 시뮬레이션 V42 - 최종버전10</h1>
+                    <h1 style="margin:0;">AMR 물류이송 시뮬레이션 V44 - AddCAD</h1>
                     <div style="display:flex; gap:8px;">
                     </div>
                 </div>
@@ -26,6 +26,7 @@
                     <div class="btn-group-reset" style="display:flex; gap:5px; margin-left:20px; align-items:center;">
                         <button id="btn-soft-reset" class="btn btn-reset-large" style="background:#ef4444; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">데이터 초기화</button>
                         <button id="btn-hard-reset" class="btn btn-reset-large" style="background:#b91c1c; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">시스템 초기화</button>
+                        <button id="btn-toggle-bg" class="btn btn-reset-large" style="background:#4b5563; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">배경 전환</button>
                     </div>
                 </div>
             </div>
@@ -110,7 +111,7 @@
         </header>
         <div class="loader-grid" id="loaderGrid"></div>
         <div class="amr-grid" id="amrGrid"></div>
-        <div class="canvas-container">
+        <div class="canvas-container simple-bg">
             <canvas id="simCanvas" width="2800" height="750"></canvas>
         </div>
     </div>
