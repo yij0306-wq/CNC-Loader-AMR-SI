@@ -3,25 +3,30 @@ const ctx = canvas.getContext('2d');
 
 const WIDTH = 2800;
 const HEIGHT = 750;
-const NUM_LOADER = 13;
+const NUM_LOADER = 16;
 
-const AMR_LANE_Y = 340;
-const OUTPUT_LANE_Y = 370;
-const DOCKING_Y = 250;
-const PED_LANE_Y = 410;
+const AMR_LANE_Y = 440;
+const OUTPUT_LANE_Y = 470;
+const DOCKING_Y = 415; // AMR_LANE_Y(440) - 25px(650mm)
+const PED_LANE_Y = 504; // 보행자 통로 간격 1000mm (39px) -> 440 + 39 + 25 = 504
 const EXCLUSION_BUFFER = 200;
+
+// U-Shape Layout Constants
+const TOP_AMR_LANE_Y = 155; // AMR_LANE_Y(440) - 285px (7.3m * 39px/m)
+const TOP_DOCKING_Y = 180; // TOP_AMR_LANE_Y(155) + 25px(650mm)
+const VERTICAL_LANE_X = 2300;
 
 // ===== 스케일: 중앙통로 총길이 50m = 2100px =====
 const CORRIDOR_START_X = 80;
 const CORRIDOR_END_X   = 2180;
 const CORRIDOR_PX      = CORRIDOR_END_X - CORRIDOR_START_X; // 2100px
-const CORRIDOR_M       = 53;   // 53m (사용자 요청 거리)
-const PX_PER_M         = CORRIDOR_PX / CORRIDOR_M; // 39.6 px/m
+const CORRIDOR_M       = 53.854;   // 53.854m (사용자 요청 거리)
+const PX_PER_M         = CORRIDOR_PX / CORRIDOR_M; // 38.99 px/m
 
-const INPUT_Y = 578; // AMR_LANE_Y(340) + 238(6m)
-const OUTPUT_Y = 102; // AMR_LANE_Y(340) - 238(6m)
+const INPUT_Y = 678; // AMR_LANE_Y(440) + 238(6m)
+const OUTPUT_Y = 202; // AMR_LANE_Y(440) - 238(6m)
 
-// MULTI INPUT ZONES
+// MULTI INPUT ZONES (원래 위치로 복구)
 const INPUT_ZONES = {
     'M3 5X':    { entryX: 1697, exitX: 1667, y: INPUT_Y },
     'M3 UPPER': { entryX: 1757, exitX: 1727, y: INPUT_Y },
@@ -35,11 +40,12 @@ const CHARGE_BAY_X = 1980;   // 베이 X좌표
 const CHARGE_EXIT_NODE = {x: CHARGE_EXIT_X, y: AMR_LANE_Y};
 const CHARGE_ENTRY_NODE = {x: CHARGE_ENTRY_X, y: AMR_LANE_Y};
 
-// MULTI OUTPUT ZONES
+// MULTI OUTPUT ZONES (우측 수직 통로에 회전 배치)
+const IO_X = 2450;
 const OUTPUT_ZONES = {
-    'M3 5X':    { entryX: 2500, exitX: 2530, y: OUTPUT_Y },
-    'M3 UPPER': { entryX: 2560, exitX: 2590, y: OUTPUT_Y },
-    'M3 2ND':   { entryX: 2620, exitX: 2650, y: OUTPUT_Y }
+    'M3 5X':    { entryY: 200, exitY: 230, x: IO_X },
+    'M3 UPPER': { entryY: 260, exitY: 290, x: IO_X },
+    'M3 2ND':   { entryY: 320, exitY: 350, x: IO_X }
 };
 
 function getIO(type, model) {
@@ -56,30 +62,39 @@ let SIDING_GAP_ORDER = [];
 
 function updateSidingOrder() {
     SIDING_GAP_ORDER = [];
-    const gap = CORRIDOR_PX / (NUM_LOADER - 1);
+    const gap = CORRIDOR_PX / 12;
     // 로더 사이의 간격 생성
-    for(let i=0; i<NUM_LOADER-1; i++){
+    for(let i=0; i<12; i++){
         SIDING_GAP_ORDER.push(80 + i * gap + gap/2);
     }
     // V40: 13호기 오른쪽으로 회피존 추가
-    const lastLdrX = 80 + (NUM_LOADER - 1) * gap;
+    const lastLdrX = 80 + 12 * gap;
     SIDING_GAP_ORDER.push(lastLdrX + gap/2);
 }
 updateSidingOrder();
 
 let extra_sidings = [];
-let evade_mode = 'SIDING_ONLY'; // 기본: 회피존만 사용
+let top_extra_sidings = [];
+let evade_mode = 'BOTH'; // 기본: 회피존 모두 사용
 
 function updateExtraSidings() {
     updateSidingOrder();
     extra_sidings = SIDING_GAP_ORDER.map(x => ({x: x, y: DOCKING_Y, type: 'EXTRA'}));
+    
+    const gap = CORRIDOR_PX / 12;
+    top_extra_sidings = [
+        {x: 80 + 12 * gap + gap/2, y: TOP_DOCKING_Y, type: 'EXTRA'},
+        {x: 80 + 11 * gap + gap/2, y: TOP_DOCKING_Y, type: 'EXTRA'},
+        {x: 80 + 10 * gap + gap/2, y: TOP_DOCKING_Y, type: 'EXTRA'},
+        {x: 80 + 9 * gap + gap/2, y: TOP_DOCKING_Y, type: 'EXTRA'}
+    ];
 }
 updateExtraSidings(); // 시작 시 즉시 초기화
 
 function getEvadeCandidates(ldrs) {
     if (evade_mode === 'CNC_ONLY') return ldrs.map(l => l.x);
-    if (evade_mode === 'SIDING_ONLY') return extra_sidings.map(s => s.x);
-    return [...ldrs.map(l => l.x), ...extra_sidings.map(s => s.x)];
+    if (evade_mode === 'SIDING_ONLY') return [...extra_sidings.map(s => s.x), ...top_extra_sidings.map(s => s.x)];
+    return [...ldrs.map(l => l.x), ...extra_sidings.map(s => s.x), ...top_extra_sidings.map(s => s.x)];
 }
 
 const COLOR_AMR_LANE = 'rgba(249,115,22,0.15)';
@@ -184,11 +199,15 @@ function updateClocks() {
         const waitBox = waitEl ? waitEl.parentElement : null;
         if (waitEl && waitBox) {
             waitEl.innerText = formatTime(l.cumulative_wait);
-            // 가시성 개선: 대기 중일 때(DONE)와 아닐 때의 스타일 구분 강화
-            if (l.status === 'DONE') {
+            // 가시성 개선: 대기 중일 때(DONE이면서 버퍼가 꽉 차서 진짜 대기 발생 시)와 아닐 때의 스타일 구분 강화
+            if (l.status === 'DONE' && l.buffer_pieces >= 3) {
                 waitBox.style.background = '#ef4444'; // 진한 빨간색 배경
                 waitBox.style.color = '#ffffff';       // 흰색 글자
                 waitEl.style.color = '#ffffff';
+            } else if (l.cumulative_wait > 0) {
+                waitBox.style.background = '#fef2f2'; // 매우 연한 붉은색 배경
+                waitBox.style.color = '#ef4444';       
+                waitEl.style.color = '#ef4444'; // 누적 대기시간 붉은색 강조
             } else {
                 waitBox.style.background = '#f1f5f9'; // 연한 회색 배경
                 waitBox.style.color = '#64748b';       // 어두운 회색 글자
@@ -199,8 +218,8 @@ function updateClocks() {
 }
 
 function runAnalysis(sim_dt) {
-    // 글로벌 대기시간 스톱워치: 하나라도 대기 중이면 증가
-    let anyWaiting = ldrs.some(l => l.active && l.status === 'DONE' && !l.amr_assigned);
+    // 글로벌 대기시간 스톱워치: 하나라도 실질적 대기 중(버퍼 3개 꽉 참)이면 증가
+    let anyWaiting = ldrs.some(l => l.active && l.status === 'DONE' && l.buffer_pieces >= 3);
     if (anyWaiting && manager.speed > 0) {
         stats.totalWait += sim_dt;
     }
@@ -275,7 +294,9 @@ class SimulationManager {
         this.history = []; // 상태 기록 배열
         this.maxHistory = 10000; // 최대 기록 수
         this.targetHours = 20; // [변경] 초기 20시간
-    this.history = [];
+        this.totalLoadFactor = 0; // [신규] 평균 부하율 트래킹
+        this.loadSamples = 0;
+        this.history = [];
     }
     update(sim_dt){
         if (this.paused) return;
@@ -287,7 +308,7 @@ class SimulationManager {
             if (this.targetHours > 0 && this.global_time >= this.targetHours * 3600) {
                 this.global_time = this.targetHours * 3600;
                 this.paused = true;
-                alert(`🎯 조업 목표 시간(${this.targetHours}시간)에 도달하여 시뮬레이션을 정지합니다.`);
+                if (window.showSimulationReport) window.showSimulationReport();
                 const btnPause = document.getElementById('btn-pause');
                 if(btnPause) setActive('#btn-pause,#btn-start,#btn-backward', btnPause);
             }
@@ -364,14 +385,25 @@ class SimulationManager {
 
 class Loader {
     constructor(id,x){
-        this.id=id; this.x=x; this.y=170;
+        this.id=id; 
         this.status='RUNNING'; this.amr_assigned=false;
+        if(id < 13) {
+            this.x = x;
+            this.y = 353;
+        } else {
+            const gap = CORRIDOR_PX / 12;
+            if(id === 13) this.x = 80 + 12 * gap;
+            else if(id === 14) this.x = 80 + 11 * gap;
+            else if(id === 15) this.x = 80 + 10 * gap;
+            this.y = 242;
+        }
         this.elapsed_time=0; this.pieces=0; this.trays=1; // [변경] 트레이 1칸부터 시작
         this.production_count=0;
         this.finishing_timer = 0;
+        this.buffer_pieces = 0; // [NEW] 대기 시 잉여 생산품을 저장할 버퍼 (최대 3개)
         if(id < 4) this.model = MODELS[0];      // 1~4: M3 5X
-        else if(id < 10) this.model = MODELS[1]; // 5~10: M3 UPPER
-        else this.model = MODELS[2];            // 11~13: M3 2ND
+        else if(id < 8) this.model = MODELS[2]; // 5~8: M3 2ND
+        else this.model = MODELS[1];            // 9~16: M3 UPPER
         this.targetTrays=8; this.pieces_per_tray=6;
         this.startTrays = 1; 
         this.preEjectTrays = 7; // [변경] 사전 배출 칸수 기본값 7
@@ -415,20 +447,32 @@ class Loader {
                 }
             }
             
-            // [변경] 호출 기준: 사전배출 사용 시 설정값, 미사용 시 설정 배출칸수(eject_threshold) 시점에 호출
-            let callThreshold = use_pre_eject ? this.preEjectTrays : eject_threshold;
+            // [변경] 호출 기준: 배출칸수(targetTrays)에 도달하면 즉시 AMR을 호출(CALLING)하여 대기시킴. (사전배출 기능 사용 시 preEjectTrays 우선)
+            let callThreshold = use_pre_eject ? this.preEjectTrays : this.targetTrays;
             if(this.trays >= callThreshold && this.status === 'RUNNING'){
                 this.status = 'CALLING';
             }
-        } else if(this.status==='IDLE'&&this.trays===0&&this.pieces===0){
+        } else if (this.status === 'DONE') {
+            // [NEW] 버퍼 로직: DONE 상태여도 최대 3개까지 계속 가공
+            if (this.buffer_pieces < 3) {
+                this.elapsed_time += sim_dt;
+                if (this.elapsed_time >= this.cycleTime) {
+                    this.elapsed_time -= this.cycleTime;
+                    this.buffer_pieces++;
+                    this.production_count++;
+                    global_production[this.model.name]++;
+                }
+            }
+        } else if(this.status==='IDLE' && this.trays===0){
             this.status='RUNNING';
             this.trays = 1; // 배출 후 빈 1번 트레이 배치
         }
 
         // [변경] 누적 지연 시간 계산 및 히스토리 기록
-        if(this.status === 'DONE') {
+        // 버퍼(최대 3개)가 꽉 찼을 때만 실질적인 대기 시간(설비 정지)으로 간주
+        if(this.status === 'DONE' && this.buffer_pieces >= 3) {
             this.cumulative_wait += sim_dt;
-            stats.totalWait += sim_dt;
+            // stats.totalWait는 runAnalysis에서 글로벌로 통합 계산하므로 여기서 제거 (이중합산 방지)
 
             // [NEW] 대기 이벤트 기록 시작
             if (!this.current_wait_event) {
@@ -449,80 +493,129 @@ class Loader {
         }
     }
     draw(ctx,gt){
+        ctx.save();
         if (!this.active) {
             ctx.fillStyle='#94a3b8'; ctx.font='800 14px Inter,sans-serif';
             ctx.textAlign='center'; ctx.textBaseline='middle';
-            ctx.fillText('LOADER-'+(this.id+1),this.x,this.y-75);
+            let ty = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 45;
+            ctx.fillText('LOADER-'+(this.id+1),this.x, ty);
+            
+            if(this.id >= 13){ ctx.translate(this.x, this.y); ctx.scale(1, -1); ctx.translate(-this.x, -this.y); }
             ctx.fillStyle='#cbd5e1';
-            ctx.beginPath(); ctx.roundRect(this.x-38,this.y-45,76,100,6); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(this.x-17,this.y-25,34,75,4); ctx.fill();
             ctx.fillStyle='#ef4444'; ctx.font='bold 12px Inter';
             ctx.fillText('OFF',this.x,this.y+10);
+            ctx.restore();
             return;
         }
 
-        ctx.fillStyle='#0f172a'; ctx.font='800 14px Inter,sans-serif';
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText('LOADER-'+(this.id+1),this.x,this.y-105);
-        ctx.fillStyle='#2563eb'; ctx.font='bold 12px Inter';
-        ctx.fillText(this.model.name,this.x,this.y-90);
-        
-        // V39: 트레이칸수와 생산수를 로더 위쪽으로 이동 (AMR 도킹 시 가림 방지)
-        ctx.fillStyle='#64748b'; ctx.font='bold 11px Inter';
-        ctx.fillText('('+this.trays+'/'+this.targetTrays+'T)',this.x,this.y-75);
-        ctx.fillStyle='#10b981'; ctx.font='bold 12px Inter';
-        let currentP = (this.status === 'DONE') ? (this.targetTrays * this.pieces_per_tray) : ((this.trays - 1) * this.pieces_per_tray + this.pieces);
-        let targetP = this.targetTrays * this.pieces_per_tray;
-        ctx.fillText('생산: '+this.production_count.toLocaleString()+'개 ('+currentP+'/'+targetP+'P)',this.x,this.y-60);
-
-        // [NEW] 호기별 지연 시간(WAIT) 표시
-        if (this.cumulative_wait > 0) {
-            ctx.fillStyle = '#ef4444'; ctx.font = '800 12px Inter';
-            ctx.fillText('대기: ' + formatTime(this.cumulative_wait), this.x, this.y - 120);
+        // GRAPHIC DRAWING (2열은 거울 대칭)
+        if(this.id >= 13){
+            ctx.translate(this.x, this.y);
+            ctx.scale(1, -1);
+            ctx.translate(-this.x, -this.y);
         }
+        
+        // CNC 설비 박스 (좌/우 1250x1400mm -> 약 49x55px)
+        ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
+        // 좌측 CNC
+        ctx.fillRect(this.x-17-49, this.y-25, 49, 55);
+        ctx.strokeRect(this.x-17-49, this.y-25, 49, 55);
+        // 우측 CNC
+        ctx.fillRect(this.x+17, this.y-25, 49, 55);
+        ctx.strokeRect(this.x+17, this.y-25, 49, 55);
 
-        let g=ctx.createLinearGradient(this.x-35,this.y-40,this.x+35,this.y+50);
+        // 75px 높이, 34px 폭(860mm) 로더 본체
+        let g=ctx.createLinearGradient(this.x-17,this.y-25,this.x+17,this.y+50);
         g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#e2e8f0');
         ctx.shadowColor='rgba(0,0,0,0.2)'; ctx.shadowBlur=10; ctx.fillStyle=g;
-        ctx.beginPath(); ctx.roundRect(this.x-38,this.y-45,76,100,6); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(this.x-17,this.y-25,34,75,4); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.stroke();
-        ctx.fillStyle='#1e293b'; ctx.fillRect(this.x+10,this.y-35,22,35);
-        ctx.fillStyle='#334155'; ctx.fillRect(this.x+12,this.y-33,18,15);
         
-        // [변경] 트레이 칸수 대비 색상 기준 (8단:빨강, 7단:노랑, 6단:초록, 그외:파랑)
+        // 스크린 & 상태창 (중앙)
+        ctx.fillStyle='#1e293b'; ctx.fillRect(this.x-11,this.y-20,22,25);
+        ctx.fillStyle='#334155'; ctx.fillRect(this.x-9,this.y-18,18,10);
+        
         let led = '#2563eb'; 
         if (this.trays >= this.targetTrays) led = '#ef4444';
         else if (this.trays === this.targetTrays - 1) led = '#eab308';
         else if (this.trays === this.targetTrays - 2) led = '#22c55e';
-        else if(this.status==='IDLE') led='#94a3b8'; // 회색
+        else if(this.status==='IDLE') led='#94a3b8';
         
-        ctx.fillStyle=led; ctx.fillRect(this.x+13,this.y-32,16,13);
-        ctx.fillStyle='#f1f5f9'; ctx.fillRect(this.x-32,this.y-15,64,60);
-        ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.strokeRect(this.x-32,this.y-15,64,60);
+        ctx.fillStyle=led; ctx.fillRect(this.x-8,this.y-17,16,8);
+        
+        // 트레이 수납부 (크기 조정)
+        ctx.fillStyle='#f1f5f9'; ctx.fillRect(this.x-14,this.y+5,28,40);
+        ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.strokeRect(this.x-14,this.y+5,28,40);
         
         for(let i=0;i<this.targetTrays;i++){
-            let ty=this.y+35-(i*7);
-            // [변경] 현재 작업 중인 트레이 인덱스는 (this.trays - 1)
+            let ty=this.y+39-(i*4.5);
             if(i < this.trays - 1){ 
-                ctx.fillStyle='#facc15'; ctx.fillRect(this.x-22,ty,44,6); ctx.strokeStyle='#ca8a04'; ctx.strokeRect(this.x-22,ty,44,6); 
+                ctx.fillStyle='#facc15'; ctx.fillRect(this.x-10,ty,20,4); ctx.strokeStyle='#ca8a04'; ctx.strokeRect(this.x-10,ty,20,4); 
             }
             else if(i === this.trays - 1 && (this.status==='RUNNING'||this.status==='CALLING'||this.status==='DONE')){
-                // 현재 작업 중인 트레이 (비어있어도 표시)
-                ctx.strokeStyle='rgba(148,163,184,0.3)'; ctx.strokeRect(this.x-22,ty,44,6);
+                ctx.strokeStyle='rgba(148,163,184,0.3)'; ctx.strokeRect(this.x-10,ty,20,4);
                 if(this.pieces > 0){
-                    ctx.fillStyle='#fef08a'; let pw=44/this.pieces_per_tray;
-                    for(let p=0;p<this.pieces;p++) ctx.fillRect(this.x-22+(p*pw),ty,pw-1,6);
+                    ctx.fillStyle='#fef08a'; let pw=20/this.pieces_per_tray;
+                    for(let p=0;p<this.pieces;p++) ctx.fillRect(this.x-10+(p*pw),ty,pw-1,4);
                 }
             }
         }
-        ctx.fillStyle='#eab308'; ctx.beginPath(); ctx.roundRect(this.x-38,this.y+50,76,5,{bl:6,br:6}); ctx.fill();
+        
+        // 도킹 범퍼
+        ctx.fillStyle='#eab308'; ctx.beginPath(); ctx.roundRect(this.x-17,this.y+50,34,5,{bl:4,br:4}); ctx.fill();
+        ctx.restore(); // 거울 대칭 복구 후 텍스트 드로잉
+
+        // TEXT DRAWING (항상 정방향, 1열은 2열 및 CNC에 안 가려지도록 위치 세밀 조정)
+        ctx.fillStyle='#0f172a'; ctx.font='900 13px Inter,sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        let textY1 = this.id >= 13 ? TOP_AMR_LANE_Y - 90 : this.y - 50;
+        let textY2 = this.id >= 13 ? TOP_AMR_LANE_Y - 75 : this.y - 37;
+        let textY3 = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 24;
+        let textY4 = this.id >= 13 ? TOP_AMR_LANE_Y - 45 : this.y - 11;
+        let textYWait = this.id >= 13 ? TOP_AMR_LANE_Y - 105 : this.y - 65;
+        
+        ctx.fillText('LOADER-'+(this.id+1),this.x, textY1);
+        ctx.fillStyle='#2563eb'; ctx.font='bold 11px Inter';
+        ctx.fillText(this.model.name,this.x, textY2);
+        
+        ctx.fillStyle='#475569'; ctx.font='bold 10px Inter';
+        ctx.fillText('('+this.trays+'/'+this.targetTrays+'T)',this.x, textY3);
+        ctx.fillStyle='#10b981'; ctx.font='bold 11px Inter';
+        let currentP = (this.status === 'DONE') ? (this.targetTrays * this.pieces_per_tray) : ((this.trays - 1) * this.pieces_per_tray + this.pieces);
+        let targetP = this.targetTrays * this.pieces_per_tray;
+        // [변경] 누적 생산수가 아닌 현재 배치(트레이) 기준의 제품수를 표시 (48개 완료 시 0부터 재시작)
+        let bufferText = this.buffer_pieces > 0 ? ` (+${this.buffer_pieces})` : '';
+        ctx.fillText('생산: '+Math.max(0, currentP).toLocaleString()+'개' + bufferText, this.x, textY4);
+
+        if (this.cumulative_wait > 0) {
+            ctx.fillStyle = '#ef4444'; ctx.font = '800 12px Inter';
+            ctx.fillText('대기: ' + formatTime(this.cumulative_wait), this.x, textYWait);
+        }
     }
+}
+
+function getIntendedVerticalDirection(amr) {
+    if (Math.abs(amr.pos.x - VERTICAL_LANE_X) < 2) {
+        if (['TO_MAIN_LANE_DOWN', 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'].includes(amr.state)) return 'DOWN';
+        if (['MOVING_ON_VERTICAL_FOR_OUTPUT', 'TO_INPUT_LANE', 'TO_INPUT_LANE_UP', 'TO_TOP_LANE_UP'].includes(amr.state)) return 'UP';
+    }
+    if (amr.target_x === VERTICAL_LANE_X) {
+        if (amr.state === 'MOVING_ON_TOP_LANE') return 'DOWN';
+        if (amr.state === 'MOVING_ON_LANE') {
+            if (amr.next_state === 'TO_TOP_LANE_UP') return 'UP';
+            if (amr.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') return 'UP';
+        }
+    }
+    if (amr.state === 'EXIT_OUTPUT_SIDE') return 'DOWN';
+    return null;
 }
 
 class AMR {
     constructor(id,color){
         this.id=id; this.color=color;
-        // 충전 베이 위치: AMR 기본 위치(480)에서 각 1.2m 간격
-        let bayY = 480 + (this.id * 1.2 * PX_PER_M);
+        // 충전 베이 위치: AMR 기본 위치(580)에서 각 1.2m 간격
+        let bayY = 580 + (this.id * 1.2 * PX_PER_M);
         this.pos={x: CHARGE_BAY_X, y: bayY};
         this.current_io_model='M3 5X';
         this.state='CHARGING'; // 완충 상태로 대기
@@ -539,6 +632,18 @@ class AMR {
         this.min_return_time = 1.5 * 60 * 60; // 1.5시간
         this.charge_count = 0; // [신규] 충전 횟수
         this.charge_counted = false; 
+        this.last_main_dir = 0; // 초기 방향 설정
+        
+        // [신규] 리포트용 트래킹 변수
+        this.active_time = 0;
+        this.idle_time = 0;
+        this.charging_time = 0;
+        this.traffic_wait_time = 0;
+        this.total_distance = 0; // 미터(m) 단위 변환용 픽셀 누적
+        this.min_soc = 100; // 최저 배터리율(%)
+        this.evasion_count = 0; // 회피 발생 횟수
+        this.evasion_counted = false;
+        this.battery_replenished = 0; // 기회충전으로 회복된 시간(초)
     }
 
     // [변경] 방향별 속도 이원화 및 전체 효율 80% 적용
@@ -553,8 +658,27 @@ class AMR {
 
     moveTowards(tx,ty,step){
         let dx=tx-this.pos.x, dy=ty-this.pos.y;
-        if(Math.abs(dx)>step) this.pos.x+=Math.sign(dx)*step; else this.pos.x=tx;
-        if(Math.abs(dy)>step) this.pos.y+=Math.sign(dy)*step; else this.pos.y=ty;
+        let dist = Math.hypot(dx, dy);
+
+        // ★ [NEW] 실제 이동 방향(dx, dy)을 기반으로 주 통행로 회전 적용
+        let onMainLane = (this.pos.y === AMR_LANE_Y) || (this.pos.y === TOP_AMR_LANE_Y) || (this.pos.x === VERTICAL_LANE_X);
+        if (onMainLane && dist > 0.1) {
+            // 가로 통행로
+            if (this.pos.y === AMR_LANE_Y || this.pos.y === TOP_AMR_LANE_Y) {
+                if (Math.abs(dx) > 0.1 && (this.state === 'MOVING_ON_LANE' || this.state === 'EVADING_TO_X' || this.state === 'MOVING_ON_TOP_LANE')) {
+                    this.last_main_dir = dx > 0 ? 0 : Math.PI;
+                }
+            } else if (this.pos.x === VERTICAL_LANE_X) { // 세로 통행로
+                if (Math.abs(dy) > 0.1 && ['MOVING_ON_VERTICAL_FOR_OUTPUT', 'TO_MAIN_LANE_DOWN', 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT', 'TO_INPUT_LANE', 'TO_INPUT_LANE_UP', 'TO_TOP_LANE_UP'].includes(this.state)) {
+                    this.last_main_dir = dy > 0 ? Math.PI / 2 : -Math.PI / 2;
+                }
+            }
+        }
+
+        let stepDist = 0;
+        if(Math.abs(dx)>step) { this.pos.x+=Math.sign(dx)*step; stepDist += step; } else { stepDist += Math.abs(tx - this.pos.x); this.pos.x=tx; }
+        if(Math.abs(dy)>step) { this.pos.y+=Math.sign(dy)*step; stepDist += step; } else { stepDist += Math.abs(ty - this.pos.y); this.pos.y=ty; }
+        this.total_distance += stepDist;
         return (this.pos.x===tx&&this.pos.y===ty);
     }
 
@@ -564,12 +688,36 @@ class AMR {
         // Update battery
         if (this.state === 'CHARGING') {
             if(!this.charge_counted){ this.charge_count++; this.charge_counted = true; }
-            this.battery += (this.max_battery / (2 * 3600)) * sim_dt;
+            let charged = (this.max_battery / (2 * 3600)) * sim_dt;
+            this.battery += charged;
+            this.battery_replenished += charged;
             if (this.battery > this.max_battery) this.battery = this.max_battery;
         } else {
             this.battery -= 1 * sim_dt;
             if (this.battery < 0) this.battery = 0;
             if (this.state !== 'CHARGING' && this.state !== 'ENTERING_BAY') this.charge_counted = false;
+        }
+        
+        // 최저 배터리 트래킹
+        let currentSoc = (this.battery / this.max_battery) * 100;
+        if (currentSoc < this.min_soc) this.min_soc = currentSoc;
+
+        // 시간 분류 트래킹 (Utilization)
+        if (this.state === 'CHARGING' || this.state === 'ENTERING_BAY' || this.state === 'TO_CHARGE_DOCK' || this.state === 'EXITING_BAY' || this.state === 'FROM_CHARGE_DOCK') {
+            this.charging_time += sim_dt;
+        } else if (this.state === 'EVADING_WAIT' || this.state === 'EVADING_TO_X' || this.state === 'EVADING_UP' || this.state === 'EVADING_DOWN') {
+            this.traffic_wait_time += sim_dt;
+            if (this.state === 'EVADING_WAIT' && !this.evasion_counted) {
+                this.evasion_count++;
+                this.evasion_counted = true;
+            }
+            if (this.state !== 'EVADING_WAIT') this.evasion_counted = false;
+        } else if (this.state === 'WAITING_INPUT' || (this.state === 'LOADING_WAIT' && this.wait_timer > 0)) {
+            this.idle_time += sim_dt;
+            this.evasion_counted = false;
+        } else {
+            this.active_time += sim_dt; // 이동 및 작업 시간
+            this.evasion_counted = false;
         }
 
         const myLaneY=this.getTargetLaneY();
@@ -625,6 +773,7 @@ class AMR {
                        (this.state==='REVERSING_FROM_OUTPUT_DOCK')?getIO('OUT',this.current_io_model).exitX:
                        (this.state==='FROM_CHARGE_DOCK')?CHARGE_EXIT_NODE.x:this.target_x;
                        
+            let blocked = false;
             let threat=amrs.find(o=>{
                 if(o.id===this.id) return false;
                 
@@ -662,8 +811,19 @@ class AMR {
                             if(Math.abs(myL-oL)>=15) skipFront=true;
                         }
                         if(!skipFront&&Math.abs(o.pos.x-this.pos.x)<evade_detect_range){
-                            if(my_tx!==this.pos.x&&otx!==o.pos.x&&Math.sign(my_tx-this.pos.x)!==Math.sign(otx-o.pos.x)){
-                                if((my_tx>this.pos.x&&o.pos.x>this.pos.x)||(my_tx<this.pos.x&&o.pos.x<this.pos.x)) conflict=true;
+                            // NEW COLLISION LOGIC
+                            let my_dir = Math.sign(my_tx - this.pos.x);
+                            let o_dir = Math.sign(otx - o.pos.x);
+                            let dist_to_o = o.pos.x - this.pos.x;
+                            if (my_dir !== 0 && Math.sign(dist_to_o) === my_dir) {
+                                // o is strictly in front of me
+                                if (my_dir !== o_dir) {
+                                    // head-on or o is stopped
+                                    conflict = true;
+                                } else {
+                                    // same direction
+                                    if (Math.abs(dist_to_o) < 80) blocked = true;
+                                }
                             }
                         }
                     }
@@ -686,6 +846,9 @@ class AMR {
                 } else if(priority_mode==='ID_PRIORITY') return o.id<this.id;
                 return o.id<this.id;
             });
+            
+            if (blocked && !threat) return; // If blocked by same-direction AMR but no evasion needed, just stop
+
             if(threat){
                 let cands=getEvadeCandidates(ldrs);
                 let free=cands.filter(x=>
@@ -705,7 +868,39 @@ class AMR {
                         }
                     }
                     this.evade_target=nx; this.state='EVADING_TO_X';
-                } else return;
+                } else return; // If threat but no evade zones, stop moving to prevent overlap
+            }
+        }
+
+        // 세로 통행로(배출구역) 교차로 진입 대기 로직 (수직 통행로 정면 충돌 방지)
+        let myIntended = getIntendedVerticalDirection(this);
+        if (myIntended) {
+            let myDist = Math.abs(this.pos.x - VERTICAL_LANE_X);
+            if (myDist < 150) {
+                let conflict = amrs.find(o => {
+                    if (o.id === this.id) return false;
+                    let oIntended = getIntendedVerticalDirection(o);
+                    if (!oIntended) return false;
+                    
+                    let oDist = Math.abs(o.pos.x - VERTICAL_LANE_X);
+                    if (oDist > 150) return false; // 멀리 있으면 무시
+                    
+                    // 방향이 반대인 경우 (정면 충돌 위협)
+                    if (myIntended !== oIntended) {
+                        if (oDist < 2 && myDist >= 2) return true; // 상대가 진입했으면 내가 양보
+                        if (myDist < 2 && oDist >= 2) return false; // 내가 진입했으면 내가 우선
+                        return o.id < this.id; // 둘 다 진입 전이거나 동시에 진입한 경우 ID 우선순위
+                    } 
+                    // 같은 방향인 경우 (후미 추돌 방지)
+                    else {
+                        if (myDist < 2 && oDist < 2) {
+                            if (myIntended === 'UP' && o.pos.y < this.pos.y && (this.pos.y - o.pos.y) < 80) return true;
+                            if (myIntended === 'DOWN' && o.pos.y > this.pos.y && (o.pos.y - this.pos.y) < 80) return true;
+                        }
+                    }
+                    return false;
+                });
+                if (conflict) return; // 대기 (이동하지 않음)
             }
         }
 
@@ -730,14 +925,14 @@ class AMR {
                 break;
             }
 case 'TO_CHARGE_DOCK': {
-                let bayY = 480 + (this.id * 1.2 * PX_PER_M);
+                let bayY = 580 + (this.id * 1.2 * PX_PER_M);
                 if(this.moveTowards(CHARGE_ENTRY_X, bayY, step)) {
                     this.state = 'ENTERING_BAY';
                 }
                 break;
             }
             case 'ENTERING_BAY': {
-                let bayY = 480 + (this.id * 1.2 * PX_PER_M);
+                let bayY = 580 + (this.id * 1.2 * PX_PER_M);
                 if(this.moveTowards(CHARGE_BAY_X, bayY, step)) {
                     this.state = 'CHARGING';
                 }
@@ -759,7 +954,7 @@ case 'TO_CHARGE_DOCK': {
                 }
                 break;
             case 'EXITING_BAY': {
-                let bayY = 480 + (this.id * 1.2 * PX_PER_M);
+                let bayY = 580 + (this.id * 1.2 * PX_PER_M);
                 // 위에서 양보 로직(교차로)은 switch문 전에 처리됨
                 if(this.moveTowards(CHARGE_EXIT_X, bayY, step)) {
                     this.state = 'FROM_CHARGE_DOCK';
@@ -768,35 +963,32 @@ case 'TO_CHARGE_DOCK': {
             }
             case 'FROM_CHARGE_DOCK':
                 if(this.moveTowards(CHARGE_EXIT_X, AMR_LANE_Y, step)) {
-                    // CHARGING 단계에서 이미 target_ldr가 배정됨
                     if(this.target_ldr) {
                         this.state = 'MOVING_ON_LANE';
                         this.target_x = getIO('IN', this.payload_model).entryX;
                         this.next_state = 'ENTERING_INPUT';
                     } else {
-                        // 예외 코드: 충전소 복귀
                         this.state = 'MOVING_ON_LANE';
                         this.target_x = CHARGE_ENTRY_NODE.x;
                         this.next_state = 'TO_CHARGE_DOCK';
                     }
                 }
                 break;
-
             case 'EXIT_INPUT_SIDE':
-                if(this.moveTowards(getIO('IN',this.current_io_model).exitX, getIO('IN',this.current_io_model).y, step)){
+                if(this.moveTowards(getIO('IN',this.current_io_model).exitX, getIO('IN',this.current_io_model).y - 55, step)){
                     this.state = 'TO_INPUT_LANE_UP';
                 }
                 break;
 
-            // 신규: AMR이 모델 INPUT entryX에 도착하면 아래로 내려가서 자로화 후 로더로
-            case 'ENTERING_INPUT':
-                // 투입 준비된 자재는 대상 로더 전용이므로 중간 변경 불가 (사용자 룰 적용)
-                if(this.moveTowards(getIO('IN',this.current_io_model).entryX, getIO('IN',this.current_io_model).y, step)){
+            case 'ENTERING_INPUT': {
+                let targetY = getIO('IN',this.current_io_model).y - 55;
+                if(this.moveTowards(getIO('IN',this.current_io_model).entryX, targetY, step)){
                     this.state = 'AT_INPUT'; this.wait_timer = 0;
                 }
                 break;
+            }
 
-            case 'AT_INPUT': // 자재 픽업 (30초 대기)
+            case 'AT_INPUT': 
                 this.wait_timer += sim_dt;
                 if(this.wait_timer >= 30){
                     this.state = 'EXIT_INPUT_SIDE';
@@ -809,8 +1001,13 @@ case 'TO_CHARGE_DOCK': {
                     if (this.next_state === 'TO_CHARGE_DOCK') {
                         this.target_x = CHARGE_ENTRY_NODE.x;
                     } else {
-                        this.target_x = this.target_ldr.x;
-                        this.next_state = 'DOCKING_IN';
+                        if (this.target_ldr && this.target_ldr.id >= 13) {
+                            this.target_x = VERTICAL_LANE_X;
+                            this.next_state = 'TO_TOP_LANE_UP';
+                        } else {
+                            this.target_x = this.target_ldr.x;
+                            this.next_state = 'DOCKING_IN';
+                        }
                     }
                 }
                 break;
@@ -838,30 +1035,72 @@ case 'TO_CHARGE_DOCK': {
             }
 
             case 'LOADING_WAIT':
-                // [변경] 수거 조건: 설비가 완료(DONE) 되었거나, 사전 배출 설정값 이상일 때 수거
-                let isReady = (this.target_ldr.status === 'DONE' || this.target_ldr.trays >= this.target_ldr.preEjectTrays);
+                // [변경] 수거 조건: 오직 설비가 48개 생산을 모두 완료(DONE) 했을 때만 수거 진행
+                let isReady = (this.target_ldr.status === 'DONE');
                 if(!isReady) return; 
                 this.wait_timer += sim_dt;
                 if(this.wait_timer > 30){
                     stats.calls++;
                     this.payload = this.target_ldr.trays;
                     this.payload_type = 'OUT';
-                    this.target_ldr.trays = 0; this.target_ldr.pieces = 0; 
+                    this.target_ldr.trays = 0; 
+                    // [변경] 버퍼에 모인 제품을 새 트레이(pieces)로 이관
+                    this.target_ldr.pieces = this.target_ldr.buffer_pieces || 0;
+                    this.target_ldr.buffer_pieces = 0; 
                     this.target_ldr.elapsed_time = 0; this.target_ldr.status = 'IDLE';
                     this.target_ldr.amr_assigned = false; this.state = 'DOCKING_OUT';
                 }
                 break;
 
             case 'DOCKING_OUT':
-                if(this.moveTowards(this.target_ldr.x,this.getTargetLaneY(),step)){
-                    this.state='MOVING_ON_LANE';
-                    this.current_io_model=this.payload_model; this.target_x=getIO('OUT',this.payload_model).entryX;
-                    this.next_state='TO_OUTPUT_DOCK';
+                let targetY = (this.target_ldr && this.target_ldr.id >= 13) ? TOP_AMR_LANE_Y : this.getTargetLaneY();
+                if(this.moveTowards(this.target_ldr.x, targetY, step)){
+                    if (this.target_ldr && this.target_ldr.id >= 13) {
+                        this.state = 'MOVING_ON_TOP_LANE';
+                        this.target_x = VERTICAL_LANE_X;
+                        this.next_state = 'TO_MAIN_LANE_DOWN';
+                    } else {
+                        this.state='MOVING_ON_LANE';
+                        this.current_io_model=this.payload_model; 
+                        this.target_x=VERTICAL_LANE_X;
+                        this.next_state='MOVING_ON_VERTICAL_FOR_OUTPUT';
+                    }
+                }
+                break;
+            case 'TO_TOP_LANE_UP':
+                if(this.moveTowards(VERTICAL_LANE_X, TOP_AMR_LANE_Y, step)){
+                    this.state='MOVING_ON_TOP_LANE';
+                    this.target_x = this.target_ldr.x;
+                    this.next_state = 'DOCKING_IN_ROW2';
+                }
+                break;
+            case 'MOVING_ON_TOP_LANE':
+                if(this.moveTowards(this.target_x, TOP_AMR_LANE_Y, step)){
+                    this.state = this.next_state;
+                }
+                break;
+            case 'DOCKING_IN_ROW2':
+                if(this.moveTowards(this.target_ldr.x, TOP_DOCKING_Y, step)){
+                    this.state='LOADING_WAIT'; this.wait_timer=0;
+                }
+                break;
+            case 'TO_MAIN_LANE_DOWN':
+                if(this.moveTowards(VERTICAL_LANE_X, this.getTargetLaneY(), step)){
+                    this.state='MOVING_ON_VERTICAL_FOR_OUTPUT';
+                    this.current_io_model=this.payload_model;
+                }
+                break;
+
+            case 'MOVING_ON_VERTICAL_FOR_OUTPUT':
+                if(this.moveTowards(VERTICAL_LANE_X, getIO('OUT',this.current_io_model).entryY, step)){
+                    this.state='TO_OUTPUT_DOCK';
                 }
                 break;
 
             case 'TO_OUTPUT_DOCK':
-                if(this.moveTowards(getIO('OUT',this.current_io_model).entryX, getIO('OUT',this.current_io_model).y, step)){
+                // 파란 박스 시작점(IO_X - 10)에 세로 상태인 AMR(폭 20) 끝단이 딱 맞게 정차 (센터 기준 -20)
+                let targetX = getIO('OUT',this.current_io_model).x - 20;
+                if(this.moveTowards(targetX, getIO('OUT',this.current_io_model).entryY, step)){
                     this.state='UNLOADING'; this.wait_timer=0;
                 }
                 break;
@@ -871,35 +1110,46 @@ case 'TO_CHARGE_DOCK': {
                 if(this.wait_timer>30){
                     this.payload=0; this.target_ldr=null;
                     this.payload_model=null; this.payload_type=null;
+                    this.state='MOVE_TO_EXIT_Y_AT_DOCK';
+                }
+                break;
+                
+            case 'MOVE_TO_EXIT_Y_AT_DOCK':
+                // Y축(상하)으로만 먼저 이동하여 exitY 에 도달
+                if(this.moveTowards(this.pos.x, getIO('OUT',this.current_io_model).exitY, step)){
                     this.state='EXIT_OUTPUT_SIDE';
                 }
                 break;
 
             case 'EXIT_OUTPUT_SIDE':
-                if(this.moveTowards(getIO('OUT',this.current_io_model).exitX, getIO('OUT',this.current_io_model).y, step)){
+                // Y는 이미 exitY 이므로 X축(좌우)으로만 이동하여 VERTICAL_LANE_X 에 도달
+                if(this.moveTowards(VERTICAL_LANE_X, getIO('OUT',this.current_io_model).exitY, step)){
+                    this.state='MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT';
+                }
+                break;
+
+            case 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT':
+                if(this.moveTowards(VERTICAL_LANE_X, AMR_LANE_Y, step)){
                     this.state='FROM_OUTPUT_DOCK';
                 }
                 break;
 
             case 'FROM_OUTPUT_DOCK':
-                if(this.moveTowards(getIO('OUT',this.current_io_model).exitX, AMR_LANE_Y, step)){
-                    let canCharge3 = this.battery <= this.min_return_time;
-                    // V33: CALLING 또는 DONE 로더 후보
-                    let nextCands = ldrs.filter(l => l.active && (l.status === 'DONE' || l.status === 'CALLING') && !l.amr_assigned);
-                    let nextBest = getBestLoader(nextCands);
-                    if(!canCharge3 && nextBest){
-                        this.target_ldr = nextBest; this.target_ldr.amr_assigned = true;
-                        this.payload_model = this.target_ldr.model.name;
-                        this.payload_type = 'IN';
-                        this.current_io_model = this.payload_model;
-                        this.state = 'MOVING_ON_LANE';
-                        this.target_x = getIO('IN', this.payload_model).entryX;
-                        this.next_state = 'ENTERING_INPUT';
-                    } else {
-                        this.state = 'MOVING_ON_LANE';
-                        this.target_x = CHARGE_ENTRY_NODE.x;
-                        this.next_state = 'TO_CHARGE_DOCK';
-                    }
+                let canCharge3 = this.battery <= this.min_return_time;
+                let nextCands = ldrs.filter(l => l.active && (l.status === 'DONE' || l.status === 'CALLING') && !l.amr_assigned);
+                let nextBest = getBestLoader(nextCands);
+                if(!canCharge3 && nextBest){
+                    this.target_ldr = nextBest; this.target_ldr.amr_assigned = true;
+                    this.payload_model = this.target_ldr.model.name;
+                    this.payload_type = 'IN';
+                    this.current_io_model = this.payload_model;
+                    this.state = 'MOVING_ON_LANE';
+                    this.target_x = getIO('IN', this.payload_model).entryX;
+                    this.next_state = 'ENTERING_INPUT';
+                } else {
+                    this.state = 'MOVING_ON_LANE';
+                    this.target_x = CHARGE_ENTRY_NODE.x;
+                    this.next_state = 'TO_CHARGE_DOCK';
                 }
                 break;
 
@@ -992,43 +1242,51 @@ case 'TO_CHARGE_DOCK': {
     
     draw(ctx){
         ctx.save(); ctx.translate(this.pos.x,this.pos.y);
+        
+        ctx.save();
+        if (this.last_main_dir !== undefined) ctx.rotate(this.last_main_dir);
 
         // ★ [CorrSpeed] 중앙통로 1배속 제한 중인 AMR 테두리 강조
         const corrLimited = isCorrSpeedLimited(this);
         ctx.shadowColor = corrLimited ? 'rgba(6,182,212,0.6)' : 'rgba(0,0,0,0.3)';
         ctx.shadowBlur = corrLimited ? 14 : 8;
 
-        let g=ctx.createLinearGradient(-25,-15,25,15);
+        let g=ctx.createLinearGradient(-25,-10,25,10);
         g.addColorStop(0,'#f8fafc'); g.addColorStop(1,'#cbd5e1');
-        ctx.fillStyle=g; ctx.beginPath(); ctx.roundRect(-25,-18,50,36,6); ctx.fill();
+        ctx.fillStyle=g; ctx.beginPath(); ctx.roundRect(-25,-10,50,20,4); ctx.fill();
         ctx.shadowBlur=0;
         ctx.lineWidth = corrLimited ? 2.5 : 2;
         ctx.strokeStyle = corrLimited ? '#06b6d4' : '#475569';
         ctx.stroke();
         
         // 바퀴 및 조명 효과
-        ctx.fillStyle='#0f172a'; ctx.fillRect(15,-10,10,20); ctx.fillRect(-25,-10,10,20);
+        ctx.fillStyle='#0f172a'; ctx.fillRect(15,-11,10,22); ctx.fillRect(-25,-11,10,22);
         ctx.fillStyle='#3b82f6'; ctx.beginPath();
-        ctx.arc(20,-5,2,0,Math.PI*2); ctx.arc(20,5,2,0,Math.PI*2);
-        ctx.arc(-20,-5,2,0,Math.PI*2); ctx.arc(-20,5,2,0,Math.PI*2); ctx.fill();
+        ctx.arc(20,-6,2,0,Math.PI*2); ctx.arc(20,6,2,0,Math.PI*2);
+        ctx.arc(-20,-6,2,0,Math.PI*2); ctx.arc(-20,6,2,0,Math.PI*2); ctx.fill();
         
         if (this.payload_model) {
             // 적재물 표시
             let pColor = this.payload_type==='OUT' ? '#facc15' : '#38bdf8';
             let pBorder = this.payload_type==='OUT' ? '#ca8a04' : '#0284c7';
-            ctx.fillStyle=pColor; ctx.fillRect(-18,-12,36,24);
-            ctx.strokeStyle=pBorder; ctx.strokeRect(-18,-12,36,24);
-            ctx.fillStyle='#0f172a'; ctx.font='800 9px Inter';
-            ctx.textAlign='center'; ctx.textBaseline='middle';
-            let txt = `${this.payload_type==='IN'?'투입':'배출'}`;
-            ctx.fillText(txt, 0, -4);
-            ctx.font='700 8px Inter';
-            ctx.fillText(this.payload_model.replace('M3 ',''), 0, 6);
+            ctx.fillStyle=pColor; ctx.fillRect(-18,-8,36,16);
+            ctx.strokeStyle=pBorder; ctx.strokeRect(-18,-8,36,16);
         } else {
             // 빈 차량 상태
             ctx.fillStyle=(this.payload===0&&this.target_ldr)?'#ec4899':this.color;
-            ctx.beginPath(); ctx.roundRect(-22,-10,44,20,4); ctx.fill();
-            ctx.fillStyle='#ffffff'; ctx.font='800 10px Inter';
+            ctx.beginPath(); ctx.roundRect(-22,-8,44,16,4); ctx.fill();
+        }
+        ctx.restore(); // 회전 복구하여 텍스트 정방향으로 출력
+
+        if (this.payload_model) {
+            ctx.fillStyle='#0f172a'; ctx.font='800 8px Inter';
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            let txt = `${this.payload_type==='IN'?'투입':'배출'}`;
+            ctx.fillText(txt, -7, 0);
+            ctx.font='700 7px Inter';
+            ctx.fillText(this.payload_model.replace('M3 ',''), 8, 0);
+        } else {
+            ctx.fillStyle='#ffffff'; ctx.font='800 9px Inter';
             ctx.textAlign='center'; ctx.textBaseline='middle';
             let lbl='A'+(this.id+1);
             ctx.fillText(lbl,0,0);
@@ -1037,10 +1295,10 @@ case 'TO_CHARGE_DOCK': {
         // ★ [CorrSpeed] 1배속 제한 중 AMR 위에 배지 표시
         if (corrLimited) {
             ctx.fillStyle = '#06b6d4';
-            ctx.beginPath(); ctx.roundRect(-12, -30, 24, 14, 4); ctx.fill();
-            ctx.fillStyle = '#ffffff'; ctx.font = '800 9px Inter';
+            ctx.beginPath(); ctx.roundRect(-10, -22, 20, 10, 3); ctx.fill();
+            ctx.fillStyle = '#ffffff'; ctx.font = '800 8px Inter';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('1x', 0, -23);
+            ctx.fillText('1x', 0, -17);
         }
 
         ctx.restore();
@@ -1165,6 +1423,124 @@ window.toggleLoader = function(i) {
     span.className = ldrs[i].active ? "status-on" : "status-off";
 };
 
+window.showSimulationReport = function() {
+    // 수집된 데이터 계산
+    let avgLoadFactor = manager.loadSamples > 0 ? (manager.totalLoadFactor / manager.loadSamples) : 0;
+    
+    let totalProd = Object.values(global_production).reduce((a,b)=>a+b, 0);
+    
+    let sysActiveTime = 0; let sysIdleTime = 0; let sysChargeTime = 0; let sysTrafficTime = 0;
+    let sysTotalDist = 0; let sysEvasionCount = 0; let sysChargeCount = 0; let minSocOverall = 100;
+    
+    amrs.forEach(a => {
+        sysActiveTime += a.active_time;
+        sysIdleTime += a.idle_time;
+        sysChargeTime += a.charging_time;
+        sysTrafficTime += a.traffic_wait_time;
+        // px to km (1m = 38.99px, so km = px / 38.99 / 1000)
+        sysTotalDist += a.total_distance / PX_PER_M / 1000;
+        sysEvasionCount += a.evasion_count;
+        sysChargeCount += a.charge_count;
+        if (a.min_soc < minSocOverall) minSocOverall = a.min_soc;
+    });
+
+    let numAmr = amrs.length;
+    let totalAmrTime = sysActiveTime + sysIdleTime + sysChargeTime + sysTrafficTime;
+    let utilRate = totalAmrTime > 0 ? (sysActiveTime / totalAmrTime) * 100 : 0;
+    
+    let sortedLoaders = [...ldrs].filter(l => l.cumulative_wait > 0).sort((a,b) => b.cumulative_wait - a.cumulative_wait);
+    
+    let html = `<h2 style="margin-top:0; color:#1e293b; border-bottom:2px solid #e2e8f0; padding-bottom:10px; font-size:18px;">📊 시뮬레이션 종료 종합 리포트</h2>`;
+    html += `<div style="max-height:60vh; overflow-y:auto; padding-right:10px;">`;
+
+    // 1. 작업 처리 능력 및 물류 생산성
+    html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">1. 작업 처리 능력 및 물류 생산성</h3>`;
+    html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
+    html += `<li><strong>목표 조업 시간:</strong> ${manager.targetHours}시간</li>`;
+    html += `<li><strong>시스템 평균 부하율:</strong> ${avgLoadFactor.toFixed(1)}%</li>`;
+    html += `<li><strong>총 생산 수량:</strong> ${totalProd.toLocaleString()}개</li>`;
+    html += `<li><strong>설비(로더) 총 다운타임:</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
+    html += `</ul></div>`;
+
+    // 2. AMR 활용률 및 유휴 시간 분석
+    html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">2. AMR 활용률 및 유휴 시간 분석</h3>`;
+    let utilColor = utilRate > 95 ? '#ef4444' : (utilRate > 80 ? '#10b981' : '#f59e0b');
+    html += `<p style="margin:0 0 8px 0; font-size:13px; color:#475569;"><strong>전체 평균 활용률:</strong> <span style="color:${utilColor}; font-weight:bold;">${utilRate.toFixed(1)}%</span> (권장치: 80~90%)</p>`;
+    html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1;">`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">활성(작업)</th><th style="padding:4px;">유휴(대기)</th><th style="padding:4px;">충전소요</th></tr>`;
+    amrs.forEach(a => {
+        let t = a.active_time + a.idle_time + a.charging_time + a.traffic_wait_time;
+        if(t===0) t=1;
+        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
+            <td style="padding:4px;">${((a.active_time/t)*100).toFixed(1)}%</td>
+            <td style="padding:4px;">${((a.idle_time/t)*100).toFixed(1)}%</td>
+            <td style="padding:4px;">${((a.charging_time/t)*100).toFixed(1)}%</td>
+        </tr>`;
+    });
+    html += `</table></div>`;
+
+    // 3. 배터리 소모 및 충전 관리
+    html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">3. 배터리 소모 및 충전 관리</h3>`;
+    html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
+    html += `<li><strong>기회 충전 총 횟수:</strong> ${sysChargeCount}회</li>`;
+    html += `<li><strong>최저 배터리율(SOC Min):</strong> <span style="font-weight:bold; color:${minSocOverall < 20 ? '#ef4444' : '#10b981'}">${minSocOverall.toFixed(1)}%</span></li>`;
+    html += `</ul></div>`;
+
+    // 4. 주행 트래픽 및 경로 효율성
+    html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">4. 주행 트래픽 및 경로 효율성</h3>`;
+    html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
+    html += `<li><strong>교착/회피(Siding) 발생 횟수:</strong> ${sysEvasionCount}회</li>`;
+    html += `<li><strong>트래픽 체증 누적 시간:</strong> ${formatTime(sysTrafficTime)}</li>`;
+    html += `<li><strong>총 주행 거리:</strong> ${sysTotalDist.toFixed(2)} km</li>`;
+    html += `</ul></div>`;
+    
+    // 로더 대기 랭킹 (Top 3)
+    if (sortedLoaders.length > 0) {
+        html += `<div style="margin-bottom:12px;">`;
+        html += `<h3 style="margin:0 0 8px 0; color:#334155; font-size:13px;">⚠️ 병목 로더 랭킹 (Top 3)</h3>`;
+        html += `<table style="width:100%; border-collapse:collapse; text-align:left; font-size:12px;">`;
+        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
+        sortedLoaders.slice(0, 3).forEach((l, i) => {
+            html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
+                <td style="padding:4px 8px; color:#ef4444; font-weight:bold;">${formatTime(l.cumulative_wait)}</td>
+            </tr>`;
+        });
+        html += `</table></div>`;
+    }
+
+    // 5. 물리적 제약 검증 조건
+    html += `<div style="background:#fffbeb; padding:12px; border-radius:6px; border-left:4px solid #f59e0b; margin-bottom:12px;">`;
+    html += `<h3 style="margin:0 0 4px 0; color:#b45309; font-size:13px;">5. 물리적 딜레이 적용 현황 (Kinematics)</h3>`;
+    html += `<p style="margin:0; font-size:11px; color:#78350f;">본 시뮬레이션은 이상적인 즉시 처리가 아닌 현실 물리 제약을 반영했습니다.<br>- 정밀 도킹 및 교체 대기: 30초 딜레이<br>- 회피 기동(Siding) 양보 대기: 최소 14초 딜레이<br>- 수직/수평 코너 및 후진 진입 시: 감속 효율 80% 적용</p>`;
+    html += `</div>`;
+
+    // AI 인사이트
+    html += `<div style="background:#eff6ff; padding:12px; border-radius:6px; border-left:4px solid #3b82f6;">`;
+    html += `<h4 style="margin:0 0 4px 0; color:#1d4ed8; font-size:13px;">💡 AI 종합 분석 인사이트</h4>`;
+    html += `<p style="margin:0; font-size:12px; line-height:1.5; color:#1e3a8a;">`;
+    if (avgLoadFactor > 95 || utilRate > 92) {
+        html += `시스템 부하와 AMR 활용률이 포화 상태입니다. 휴식/충전 시간 부족으로 인한 셧다운 위험이 있으므로 AMR 대수를 추가 투입하는 것이 절대적으로 권장됩니다.`;
+    } else if (sysTrafficTime > 1800) {
+        html += `부하율은 적정하나 좁은 통로로 인한 트래픽(회피) 체증이 심각합니다(${formatTime(sysTrafficTime)} 소요). 배출 2라인(Dual Lane) 모드를 활성화하여 트래픽을 분산해보세요.`;
+    } else if (utilRate < 50) {
+        html += `AMR 활용률이 매우 낮습니다(${utilRate.toFixed(1)}%). AMR 대수가 과잉 투입되었을 수 있으니 1대를 줄여서 재테스트하는 것을 권장합니다.`;
+    } else {
+        html += `전반적인 에너지 밸런스와 물류 처리량이 매우 안정적인 상태로, 최적의 AMR 대수 및 셋팅으로 판단됩니다.`;
+    }
+    html += `</p></div>`;
+
+    html += `</div>`; // scroll container 끝
+
+    document.getElementById('reportContent').innerHTML = html;
+    document.getElementById('reportModal').style.display = 'flex';
+};
+
 function init(){
     manager = new SimulationManager();
     manager.speed = 1; // [변경] 기본 1배속 설정
@@ -1175,9 +1551,11 @@ function init(){
     document.getElementById('prod-m3-2nd').innerText='0';
     updateExtraSidings();
     ldrs=[]; amrs=[];
-    const gap = CORRIDOR_PX / (NUM_LOADER - 1);
-    for(let i=0;i<NUM_LOADER;i++){
-        let l=new Loader(i,80+i*gap); ldrs.push(l);
+    const gap = CORRIDOR_PX / 12;
+    for(let i=0;i<16;i++){
+        let x = 0;
+        if(i < 13) x = 80 + i * gap;
+        let l=new Loader(i,x); ldrs.push(l);
     }
     // 시작단 자동 배분
     let modelGroups = {};
@@ -1186,8 +1564,14 @@ function init(){
         modelGroups[l.model.name].push(l);
     });
     Object.values(modelGroups).forEach(group => {
-        group.forEach((l, idx) => { l.startTrays = (idx % 8) + 1; }); // [변경] 1~8 범위 배분
+        group.forEach((l, idx) => { l.startTrays = (idx % 8) + 1; }); // 1~8 범위 배분
     });
+    
+    // [NEW] 9호기(index 8)부터 16호기(index 15)까지 시작칸수: 8, 7, 6, 5, 4, 3, 2, 1
+    for(let i = 8; i < 16; i++) {
+        if(ldrs[i]) ldrs[i].startTrays = 16 - i;
+    }
+    
     ldrs.forEach(l => l.randomizeStart());
     stats = { calls: 0, totalWait: 0 };
     setupLoaderGrid();
@@ -1201,7 +1585,7 @@ function init(){
     const btnPause = document.getElementById('btn-pause');
     if(btnPause) setActive('#btn-pause,#btn-start,#btn-backward', btnPause);
     const btn1x = document.getElementById('btn-1x');
-    if(btn1x) setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x', btn1x);
+    if(btn1x) setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x', btn1x);
 }
 
 function update(dt){
@@ -1217,6 +1601,8 @@ function update(dt){
     if (!manager.paused && manager.mode === 'FORWARD') {
         ldrs.forEach(l => l.update(sim_dt));          // 로더 생산 타임 동기화
         let loadFactor = runAnalysis(sim_dt);         // 분석/UI 업데이트
+        manager.totalLoadFactor += loadFactor * sim_dt;
+        manager.loadSamples += sim_dt;
         amrs.forEach(a => a.update(manager, amrs, ldrs, loadFactor, sim_dt)); // 모든 AMR 동기화
     } else {
         runAnalysis(0); // 정지 상태에서도 UI(배터리 등) 갱신
@@ -1228,23 +1614,42 @@ function update(dt){
 
 function drawEvadeHighlight(ctx,zones){
     zones.forEach(z=>{
+        let dy = z.isTop ? TOP_DOCKING_Y : DOCKING_Y;
         ctx.fillStyle='rgba(124,58,237,0.07)';
-        ctx.fillRect(z.x-44,DOCKING_Y-55,88,110);
+        ctx.fillRect(z.x-30, dy-25, 60, 50);
         ctx.strokeStyle='rgba(124,58,237,0.30)'; ctx.lineWidth=1.5;
-        ctx.setLineDash([5,4]); ctx.strokeRect(z.x-44,DOCKING_Y-55,88,110); ctx.setLineDash([]);
-        ctx.fillStyle='rgba(124,58,237,0.65)'; ctx.font='bold 10px Inter';
-        ctx.textAlign='center';
-        ctx.fillText('회피구간',z.x,DOCKING_Y-60);
+        ctx.setLineDash([5,4]); ctx.strokeRect(z.x-30, dy-25, 60, 50); ctx.setLineDash([]);
+    });
+
+    // 추가 회피존 표시 (SIDING)
+    extra_sidings.forEach((s,i)=>{
+        ctx.fillStyle='rgba(250,204,21,0.2)';
+        ctx.fillRect(s.x-25, AMR_LANE_Y-20, 50, 40);
+        ctx.strokeStyle='rgba(250,204,21,0.5)';
+        ctx.strokeRect(s.x-25, AMR_LANE_Y-20, 50, 40);
+    });
+
+    // 2열(상단) 회피존 표시
+    top_extra_sidings.forEach((s,i)=>{
+        ctx.fillStyle='rgba(250,204,21,0.2)';
+        ctx.fillRect(s.x-25, TOP_AMR_LANE_Y-20, 50, 40);
+        ctx.strokeStyle='rgba(250,204,21,0.5)';
+        ctx.strokeRect(s.x-25, TOP_AMR_LANE_Y-20, 50, 40);
     });
 }
 
 function draw(){
     ctx.clearRect(0,0,WIDTH,HEIGHT);
 
+    // 보행자 통로 동적 Y 계산: AMR 주 통행로 하단 가장자리 라인(bottom edge)과 맞닿도록
+    let amr_bottom_edge = dual_lane ? (OUTPUT_LANE_Y + 15) : (AMR_LANE_Y + 14);
+    let dynamic_ped_lane_top = amr_bottom_edge;
+    let dynamic_ped_lane_y = dynamic_ped_lane_top + 25; // 중앙 y좌표
+
     // 보행자 레인
-    ctx.fillStyle=COLOR_PED_LANE; ctx.fillRect(0,PED_LANE_Y-25,WIDTH,50);
+    ctx.fillStyle=COLOR_PED_LANE; ctx.fillRect(0,dynamic_ped_lane_y-25,VERTICAL_LANE_X+14,50);
     ctx.fillStyle='#64748b'; ctx.font='800 14px Inter'; ctx.textAlign='left';
-    ctx.fillText('보행자',20,PED_LANE_Y+5);
+    ctx.fillText('보행자',20,dynamic_ped_lane_y+5);
 
     // 배출(OUTPUT) 2라인 표시
     if(dual_lane){
@@ -1257,35 +1662,47 @@ function draw(){
 
     // 투입 레인
     ctx.fillStyle=COLOR_AMR_LANE;
-    let lh=dual_lane?(OUTPUT_LANE_Y-AMR_LANE_Y+30):50;
-    ctx.fillRect(0,AMR_LANE_Y-25,WIDTH,lh);
-    ctx.beginPath(); ctx.moveTo(0,AMR_LANE_Y); ctx.lineTo(WIDTH,AMR_LANE_Y);
+    let lh=dual_lane?(OUTPUT_LANE_Y-AMR_LANE_Y+29):28; // 폭 700mm = 28px
+    ctx.fillRect(0,AMR_LANE_Y-14,VERTICAL_LANE_X+14,lh);
+    ctx.beginPath(); ctx.moveTo(0,AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X+14,AMR_LANE_Y);
     ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2; ctx.stroke();
     ctx.fillStyle=COLOR_AMR_LINE; ctx.font='800 12px Inter'; ctx.textAlign='left';
-    ctx.fillText(dual_lane?'투입 경로 (1라인)':'AMR',20,AMR_LANE_Y-10);
+    ctx.fillText(dual_lane?'투입 경로 (1라인)':'AMR',20,AMR_LANE_Y-18);
 
     // 회피구간 하이라이트
     let evZones=[];
-    if(evade_mode==='CNC_ONLY') evZones=ldrs.map(l=>({x:l.x}));
-    else if(evade_mode==='SIDING_ONLY') evZones=extra_sidings.map(s=>({x:s.x}));
-    else evZones=[...ldrs.map(l=>({x:l.x})),...extra_sidings.map(s=>({x:s.x}))];
+    if(evade_mode==='CNC_ONLY') evZones=ldrs.map(l=>({x:l.x, isTop: l.id>=13}));
+    else if(evade_mode==='SIDING_ONLY') evZones=[...extra_sidings.map(s=>({x:s.x, isTop:false})), ...top_extra_sidings.map(s=>({x:s.x, isTop:true}))];
+    else evZones=[...ldrs.map(l=>({x:l.x, isTop: l.id>=13})), ...extra_sidings.map(s=>({x:s.x, isTop:false})), ...top_extra_sidings.map(s=>({x:s.x, isTop:true}))];
     drawEvadeHighlight(ctx,evZones);
 
-    // 로더 도킹 라인 (위쪽)
-    function drawDockUp(x){
+    // 로더 도킹 라인 (위쪽/아래쪽)
+    function drawDockUp(x, isTop){
+        let laneY = isTop ? TOP_AMR_LANE_Y : AMR_LANE_Y;
+        let dockY = isTop ? TOP_DOCKING_Y : DOCKING_Y;
+        let sign = isTop ? -1 : 1;
         ctx.strokeStyle='rgba(234,88,12,0.4)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(x,AMR_LANE_Y); ctx.lineTo(x,DOCKING_Y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(x,laneY); ctx.lineTo(x,dockY); ctx.stroke(); ctx.setLineDash([]);
         ctx.beginPath();
-        ctx.moveTo(x-30,AMR_LANE_Y-10); ctx.lineTo(x-30,DOCKING_Y-20);
-        ctx.lineTo(x+30,DOCKING_Y-20); ctx.lineTo(x+30,AMR_LANE_Y-10); ctx.stroke();
+        ctx.moveTo(x-30,laneY - 10*sign); ctx.lineTo(x-30,dockY - 20*sign);
+        ctx.lineTo(x+30,dockY - 20*sign); ctx.lineTo(x+30,laneY - 10*sign); ctx.stroke();
     }
-    ldrs.forEach(l=>drawDockUp(l.x));
+    ldrs.forEach(l=>drawDockUp(l.x, l.id >= 13));
+    
+    // Draw TOP AMR LANE and VERTICAL LANE
+    ctx.fillStyle=COLOR_AMR_LANE; ctx.fillRect(0, TOP_AMR_LANE_Y-14, VERTICAL_LANE_X+14, 28);
+    ctx.fillRect(VERTICAL_LANE_X-14, TOP_AMR_LANE_Y-14, 28, AMR_LANE_Y-TOP_AMR_LANE_Y+28);
+    ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(0, TOP_AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X, TOP_AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X, AMR_LANE_Y); ctx.stroke();
 
-    // 추가 회피존 표시 (SIDING)
-    extra_sidings.forEach((s,i)=>{
-        drawDockUp(s.x);
-        ctx.fillStyle='#38bdf8'; ctx.font='bold 11px Inter'; ctx.textAlign='center';
-        ctx.fillText('S'+(i+1),s.x,DOCKING_Y-35);
+    // 추가 회피존 도킹 라인 표시 (SIDING)
+    extra_sidings.forEach(s=>{
+        drawDockUp(s.x, false);
+    });
+    
+    // 2열 회피존 도킹 라인 표시
+    top_extra_sidings.forEach(s=>{
+        drawDockUp(s.x, true);
     });
 
         // ===== MULTI INPUT ZONES =====
@@ -1301,8 +1718,8 @@ function draw(){
         ctx.beginPath(); ctx.moveTo(iExX,iLaneY); ctx.lineTo(iExX,iy-45); ctx.stroke(); ctx.setLineDash([]);
         ctx.strokeStyle='rgba(234,88,12,0.4)'; ctx.lineWidth=2;
         ctx.beginPath();
-        ctx.moveTo(iExX-10,iLaneY+10); ctx.lineTo(iExX-10,iy+50);
-        ctx.lineTo(iEntX+10,iy+50); ctx.lineTo(iEntX+10,iLaneY+10); ctx.stroke();
+        ctx.moveTo(iExX-10,iLaneY+10); ctx.lineTo(iExX-10,iy-45);
+        ctx.lineTo(iEntX+10,iy-45); ctx.lineTo(iEntX+10,iLaneY+10); ctx.stroke();
         
         ctx.fillStyle='rgba(234,88,12,0.8)'; ctx.font='bold 9px Inter'; ctx.textAlign='center';
         ctx.fillText('▼입차',iEntX,iLaneY+14);
@@ -1328,7 +1745,7 @@ function draw(){
     ctx.fillText('▼입차', cEntX, AMR_LANE_Y+14);
 
     for (let i = 0; i < 4; i++) {
-        let bayY = 480 + (i * 1.2 * PX_PER_M);
+        let bayY = 580 + (i * 1.2 * PX_PER_M);
         ctx.fillStyle='#f1f5f9'; ctx.fillRect(CHARGE_BAY_X-40, bayY-20, 80, 40);
         ctx.strokeStyle='rgba(59,130,246,0.4)'; ctx.lineWidth=2;
         ctx.beginPath(); ctx.moveTo(cExX, bayY); ctx.lineTo(CHARGE_BAY_X, bayY); ctx.stroke();
@@ -1349,31 +1766,46 @@ function draw(){
 
         // ===== MULTI OUTPUT ZONES =====
     Object.values(OUTPUT_ZONES).forEach((zone, i) => {
-        let ox=zone.entryX, oy=zone.y;
-        let oEntX=zone.entryX, oExX=zone.exitX;
+        let ox=zone.x, oEntY=zone.entryY, oExY=zone.exitY;
         let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND'];
 
         ctx.strokeStyle='rgba(59,130,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(oEntX,AMR_LANE_Y); ctx.lineTo(oEntX,oy+45); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oEntY); ctx.lineTo(ox-30,oEntY); ctx.stroke(); ctx.setLineDash([]);
         ctx.strokeStyle='rgba(139,92,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(oExX,AMR_LANE_Y); ctx.lineTo(oExX,oy+45); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oExY); ctx.lineTo(ox-30,oExY); ctx.stroke(); ctx.setLineDash([]);
+        
         ctx.strokeStyle='rgba(59,130,246,0.4)'; ctx.lineWidth=2;
         ctx.beginPath();
-        ctx.moveTo(oEntX-10,AMR_LANE_Y-10); ctx.lineTo(oEntX-10,oy-50);
-        ctx.lineTo(oExX+10,oy-50); ctx.lineTo(oExX+10,AMR_LANE_Y-10); ctx.stroke();
+        ctx.moveTo(ox-30, oEntY-10); ctx.lineTo(ox-10, oEntY-10);
+        ctx.lineTo(ox-10, oExY+10); ctx.lineTo(ox-30, oExY+10); ctx.stroke();
         
         ctx.fillStyle='rgba(59,130,246,0.9)'; ctx.font='bold 9px Inter'; ctx.textAlign='center';
-        ctx.fillText('▲입차',oEntX,AMR_LANE_Y-14);
+        ctx.fillText('▶입차', VERTICAL_LANE_X+15, oEntY-4);
         ctx.fillStyle='rgba(139,92,246,0.9)';
-        ctx.fillText('▼출차',oExX,AMR_LANE_Y-14);
+        ctx.fillText('◀출차', VERTICAL_LANE_X+15, oExY-4);
         
         ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
         ctx.fillStyle='#bfdbfe';
-        ctx.beginPath(); ctx.roundRect(oEntX-15,oy-45,oExX-oEntX+30,90,12); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(ox-10, oEntY-15, 90, oExY-oEntY+30, 12); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#334155'; ctx.lineWidth=2; ctx.stroke();
         ctx.fillStyle='#0f172a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='700 11px Inter'; ctx.fillText('OUT ' + modelNames[i].replace('M3 ',''),(oEntX+oExX)/2,oy);
+        ctx.font='700 11px Inter'; ctx.fillText('OUT ' + modelNames[i].replace('M3 ',''), ox+35, (oEntY+oExY)/2);
     });
+    
+    // [NEW] 1열 1~10호기(인덱스 0~9) 상단(2열 위치)에 빈 CNC 사각 박스 그리기
+    for(let i=0; i<10; i++) {
+        let x = ldrs[i].x;
+        let y = 242; // Row 2 Loader Y coordinate
+        ctx.save();
+        ctx.translate(x, y); ctx.scale(1, -1); ctx.translate(-x, -y);
+        ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
+        // 좌측 CNC
+        ctx.fillRect(x-17-49, y-25, 49, 55); ctx.strokeRect(x-17-49, y-25, 49, 55);
+        // 우측 CNC
+        ctx.fillRect(x+17, y-25, 49, 55); ctx.strokeRect(x+17, y-25, 49, 55);
+        ctx.restore();
+    }
+
     ldrs.forEach(l=>l.draw(ctx,manager.global_time));
     amrs.forEach(a=>a.draw(ctx));
 }
@@ -1409,14 +1841,14 @@ document.getElementById('btn-pause').addEventListener('click',e=>{
     manager.paused=true;
     setActive('#btn-pause,#btn-start,#btn-backward',e.target);
 });
-document.getElementById('btn-1x').addEventListener('click',e=>{manager.speed=1;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-5x').addEventListener('click',e=>{manager.speed=5;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-10x').addEventListener('click',e=>{manager.speed=10;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-20x').addEventListener('click',e=>{manager.speed=20;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-50x').addEventListener('click',e=>{manager.speed=50;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-100x').addEventListener('click',e=>{manager.speed=100;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-200x').addEventListener('click',e=>{manager.speed=200;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
-document.getElementById('btn-500x').addEventListener('click',e=>{manager.speed=500;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-500x',e.target);});
+document.getElementById('btn-1x').addEventListener('click',e=>{manager.speed=1;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-5x').addEventListener('click',e=>{manager.speed=5;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-10x').addEventListener('click',e=>{manager.speed=10;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-20x').addEventListener('click',e=>{manager.speed=20;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-50x').addEventListener('click',e=>{manager.speed=50;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-100x').addEventListener('click',e=>{manager.speed=100;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-200x').addEventListener('click',e=>{manager.speed=200;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-300x').addEventListener('click',e=>{manager.speed=300;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
 
 // [NEW] 조업 목표 시간 설정 리스너
 document.getElementById('select-target-time').addEventListener('change', e => {
@@ -1532,14 +1964,17 @@ document.getElementById('input-detect-range').addEventListener('input',e=>{
     document.getElementById('val-detect-range').innerText = evade_detect_range + 'px';
 });
 
-document.getElementById('btn-amr1').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0])];manager.history=[];setupAmrGrid();runAnalysis(0);draw();});
-document.getElementById('btn-amr2').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1])];manager.history=[];setupAmrGrid();runAnalysis(0);draw();});
-document.getElementById('btn-amr3').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1]),new AMR(2,COLOR_AMR[2])];manager.history=[];setupAmrGrid();runAnalysis(0);draw();});
-document.getElementById('btn-amr4').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1]),new AMR(2,COLOR_AMR[2]),new AMR(3,COLOR_AMR[3])];manager.history=[];setupAmrGrid();runAnalysis(0);draw();});
+document.getElementById('btn-amr1').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0])];softReset();setupAmrGrid();draw();});
+document.getElementById('btn-amr2').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1])];softReset();setupAmrGrid();draw();});
+document.getElementById('btn-amr3').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1]),new AMR(2,COLOR_AMR[2])];softReset();setupAmrGrid();draw();});
+document.getElementById('btn-amr4').addEventListener('click',e=>{setActive('#btn-amr1,#btn-amr2,#btn-amr3,#btn-amr4',e.target);resetAmrAssignments();amrs=[new AMR(0,COLOR_AMR[0]),new AMR(1,COLOR_AMR[1]),new AMR(2,COLOR_AMR[2]),new AMR(3,COLOR_AMR[3])];softReset();setupAmrGrid();draw();});
 
 function softReset() {
     manager.global_time = 0;
     manager.history = []; // V40: 히스토리도 초기화
+    manager.totalLoadFactor = 0;
+    manager.loadSamples = 0;
+    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0};
     document.getElementById('prod-m3-5x').innerText='0';
     document.getElementById('prod-m3-upper').innerText='0';
     document.getElementById('prod-m3-2nd').innerText='0';
@@ -1561,11 +1996,13 @@ function softReset() {
         l.done_timestamp = 0;
         l.targetTrays = eject_threshold; 
         l.cumulative_wait = 0;
+        l.wait_history = [];
+        l.current_wait_event = null;
         l.randomizeStart();
     });
 
     amrs.forEach((a, i) => {
-        let bayY = 480 + (i * 1.2 * PX_PER_M);
+        let bayY = 580 + (i * 1.2 * PX_PER_M);
         a.pos = {x: CHARGE_BAY_X, y: bayY};
         a.state = 'CHARGING';
         a.payload = 0;
@@ -1582,6 +2019,12 @@ function softReset() {
         a.battery = a.max_battery;
         a.charge_count = 0; a.charge_counted = false;
     });
+
+    manager.paused = true;
+    const btnPause = document.getElementById('btn-pause');
+    if(btnPause) setActive('#btn-pause,#btn-start,#btn-backward', btnPause);
+    
+    runAnalysis(0);
 }
 
 function resetAmrAssignments(){ ldrs.forEach(l=>l.amr_assigned=false); }
