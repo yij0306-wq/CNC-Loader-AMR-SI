@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMR 물류이송 시뮬레이션 V40 - CorrSpeed</title>
+    <title>AMR 물류이송 시뮬레이션 V42 - 최종버전10</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,10 +11,8 @@
         <header>
             <div class="title-group">
                 <div style="display:flex; align-items:center; gap:15px;">
-                    <h1 style="margin:0;">AMR 물류이송 시뮬레이션 V40 - CorrSpeed</h1>
+                    <h1 style="margin:0;">AMR 물류이송 시뮬레이션 V42 - 최종버전10</h1>
                     <div style="display:flex; gap:8px;">
-                        <a href="v2/index_v2.html" style="text-decoration:none; background:#475569; color:white; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; border:1px solid #334155; transition: background 0.2s;" onmouseover="this.style.background='#64748b'" onmouseout="this.style.background='#475569'">v2 보기</a>
-                        <a href="v10/index_v10.html" style="text-decoration:none; background:#475569; color:white; padding:4px 10px; border-radius:4px; font-size:12px; font-weight:bold; border:1px solid #334155; transition: background 0.2s;" onmouseover="this.style.background='#64748b'" onmouseout="this.style.background='#475569'">v10 보기</a>
                     </div>
                 </div>
                 <div class="clock-panel">
@@ -44,7 +42,7 @@
                     <button id="btn-50x" class="btn">50x</button>
                     <button id="btn-100x" class="btn">100x</button>
                     <button id="btn-200x" class="btn">200x</button>
-                    <button id="btn-500x" class="btn">500x</button>
+                    <button id="btn-300x" class="btn">300x</button>
                 </div>
 
                 <!-- ★ 신규: 중앙통로 속도제한 AMR 설정 컨트롤 -->
@@ -93,8 +91,8 @@
                 <div class="controls-group">
                     <span class="label">회피 모드</span>
                     <button id="btn-evade-cnc" class="btn btn-evade">CNC 도킹존 회피</button>
-                    <button id="btn-evade-siding" class="btn btn-evade active">회피존만 사용</button>
-                    <button id="btn-evade-both" class="btn btn-evade">둘다 사용</button>
+                    <button id="btn-evade-siding" class="btn btn-evade">회피존만 사용</button>
+                    <button id="btn-evade-both" class="btn btn-evade active">둘다 사용</button>
                 </div>
                 <div class="controls-group">
                     <span class="label">회피 감지거리</span>
@@ -128,6 +126,34 @@
         </div>
     </div>
 
+    <!-- [NEW] 시뮬레이션 종료 요약 리포트 모달 -->
+    <div id="reportModal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 600px;">
+            <button class="modal-close" onclick="document.getElementById('reportModal').style.display='none'">&times;</button>
+            <div id="reportContent"></div>
+            <div style="margin-top:24px; text-align:right;">
+                <button class="btn" onclick="document.getElementById('reportModal').style.display='none'" style="background:#3b82f6; color:#ffffff; padding:8px 20px;">확인</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
+    
+    <!-- Video Modal Floating Button -->
+    <button id="btn-video-modal" class="btn" style="position:fixed; bottom:20px; right:20px; background:#4f46e5; color:white; border-radius:50px; padding:10px 20px; font-weight:bold; box-shadow:0 4px 10px rgba(0,0,0,0.3); z-index:9999;" onclick="document.getElementById('videoModal').style.display='flex'">
+        🎬 물류 영상 보기
+    </button>
+
+    <!-- Video Modal -->
+    <div id="videoModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:10000; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:12px; padding:20px; width:80%; max-width:800px; position:relative;">
+            <button class="btn" style="position:absolute; top:-15px; right:-15px; background:#ef4444; color:white; border-radius:50%; width:40px; height:40px; font-size:16px; font-weight:bold;" onclick="document.getElementById('videoModal').style.display='none'; document.getElementById('amr-video').pause();">X</button>
+            <h2 style="margin-top:0;">AMR 물류 영상 참고</h2>
+            <video id="amr-video" controls style="width:100%; border-radius:8px;">
+                <source src="../AMR 물류동영상.mp4" type="video/mp4">
+                브라우저가 동영상을 지원하지 않습니다.
+            </video>
+        </div>
+    </div>
 </body>
 </html>
