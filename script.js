@@ -1479,7 +1479,27 @@ window.showSimulationReport = function() {
     html += `<li><strong>총 배출 수량 (Total):</strong> ${totalProd.toLocaleString()}개</li>`;
     html += `<li><strong>기종별 누적 배출량:</strong> M3 5X: <span style="color:#2563eb; font-weight:bold;">${global_production['M3 5X']}</span>개 | M3 UPPER: <span style="color:#16a34a; font-weight:bold;">${global_production['M3 UPPER']}</span>개 | M3 2ND: <span style="color:#d97706; font-weight:bold;">${global_production['M3 2ND']}</span>개</li>`;
     html += `<li><strong>설비(로더) 총 다운타임:</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
-    html += `</ul></div>`;
+    html += `</ul>`;
+    
+    // 전체 로더 대기 현황 (대기 발생한 로더 전체)
+    let waitingLoaders = [...ldrs].filter(l => l.cumulative_wait > 0);
+    if (waitingLoaders.length > 0) {
+        html += `<div style="margin-top:10px;">`;
+        html += `<h4 style="margin:0 0 6px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h4>`;
+        html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
+        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
+        // ID 순으로 정렬하여 전부 표기
+        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l, index) => {
+            html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:4px 8px; color:#64748b; font-weight:bold;">${index + 1}</td>
+                <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
+                <td style="padding:4px 8px;">${l.wait_history.length}회</td>
+                <td style="padding:4px 8px; color:#ef4444; font-weight:bold;">${formatTime(l.cumulative_wait)}</td>
+            </tr>`;
+        });
+        html += `</table></div>`;
+    }
+    html += `</div>`;
 
     // 2. AMR 활용률 및 유휴 시간 분석
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
@@ -1534,24 +1554,7 @@ window.showSimulationReport = function() {
     html += `<li><strong>시간당 주행 거리:</strong> ${distPerHour} km/hr</li>`;
     html += `</ul></div>`;
     
-    // 전체 로더 대기 현황 (대기 발생한 로더 전체)
-    let waitingLoaders = [...ldrs].filter(l => l.cumulative_wait > 0);
-    if (waitingLoaders.length > 0) {
-        html += `<div style="margin-bottom:12px;">`;
-        html += `<h3 style="margin:0 0 8px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h3>`;
-        html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
-        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
-        // ID 순으로 정렬하여 전부 표기
-        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l, index) => {
-            html += `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:4px 8px; color:#64748b; font-weight:bold;">${index + 1}</td>
-                <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
-                <td style="padding:4px 8px;">${l.wait_history.length}회</td>
-                <td style="padding:4px 8px; color:#ef4444; font-weight:bold;">${formatTime(l.cumulative_wait)}</td>
-            </tr>`;
-        });
-        html += `</table></div>`;
-    }
+
 
     html += `</div>`; // scroll container 끝
 
