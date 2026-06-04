@@ -1528,9 +1528,10 @@ window.showSimulationReport = function() {
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
     html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">4. 주행 트래픽 및 경로 효율성</h3>`;
     html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
+    let distPerHour = manager.global_time > 0 ? (sysTotalDist / (manager.global_time / 3600)).toFixed(2) : 0;
     html += `<li><strong>교착/회피(Siding) 발생 횟수:</strong> ${sysEvasionCount}회</li>`;
-    html += `<li><strong>트래픽 체증 누적 시간:</strong> ${formatTime(sysTrafficTime)}</li>`;
     html += `<li><strong>총 주행 거리:</strong> ${sysTotalDist.toFixed(2)} km</li>`;
+    html += `<li><strong>시간당 주행 거리:</strong> ${distPerHour} km/hr</li>`;
     html += `</ul></div>`;
     
     // 전체 로더 대기 현황 (대기 발생한 로더 전체)
@@ -1539,10 +1540,11 @@ window.showSimulationReport = function() {
         html += `<div style="margin-bottom:12px;">`;
         html += `<h3 style="margin:0 0 8px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h3>`;
         html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
-        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
+        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
         // ID 순으로 정렬하여 전부 표기
-        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l) => {
+        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l, index) => {
             html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                <td style="padding:4px 8px; color:#64748b; font-weight:bold;">${index + 1}</td>
                 <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
                 <td style="padding:4px 8px;">${l.wait_history.length}회</td>
                 <td style="padding:4px 8px; color:#ef4444; font-weight:bold;">${formatTime(l.cumulative_wait)}</td>
