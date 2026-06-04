@@ -1488,8 +1488,8 @@ window.showSimulationReport = function() {
         html += `<h4 style="margin:0 0 6px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h4>`;
         html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
         html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
-        // ID 순으로 정렬하여 전부 표기
-        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l, index) => {
+        // 누적 대기시간이 가장 많은 호기부터 내림차순 정렬
+        waitingLoaders.sort((a,b) => b.cumulative_wait - a.cumulative_wait).forEach((l, index) => {
             html += `<tr style="border-bottom:1px solid #e2e8f0;">
                 <td style="padding:4px 8px; color:#64748b; font-weight:bold;">${index + 1}</td>
                 <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
