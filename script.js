@@ -1531,24 +1531,29 @@ window.showSimulationReport = function() {
         html += `</table></div>`;
     }
 
-    // 5. 물리적 제약 검증 조건
-    html += `<div style="background:#fffbeb; padding:12px; border-radius:6px; border-left:4px solid #f59e0b; margin-bottom:12px;">`;
-    html += `<h3 style="margin:0 0 4px 0; color:#b45309; font-size:13px;">5. 물리적 딜레이 적용 현황 (Kinematics)</h3>`;
-    html += `<p style="margin:0; font-size:11px; color:#78350f;">본 시뮬레이션은 이상적인 즉시 처리가 아닌 현실 물리 제약을 반영했습니다.<br>- 정밀 도킹 및 교체 대기: 30초 딜레이<br>- 회피 기동(Siding) 양보 대기: 최소 14초 딜레이<br>- 수직/수평 코너 및 후진 진입 시: 감속 효율 80% 적용</p>`;
-    html += `</div>`;
+    let systemUph = manager.global_time > 0 ? (totalProd / (manager.global_time / 3600)).toFixed(1) : 0;
+    let avgDistPerItem = totalProd > 0 ? ((sysTotalDist * 1000) / totalProd).toFixed(1) : 0;
+    let effectiveSpeed = sysActiveTime > 0 ? ((sysTotalDist * 1000) / sysActiveTime).toFixed(2) : 0;
 
-    // AI 인사이트
-    html += `<div style="background:#eff6ff; padding:12px; border-radius:6px; border-left:4px solid #3b82f6;">`;
-    html += `<h4 style="margin:0 0 4px 0; color:#1d4ed8; font-size:13px;">💡 AI 종합 분석 인사이트</h4>`;
-    html += `<p style="margin:0; font-size:12px; line-height:1.5; color:#1e3a8a;">`;
+    // 5. 실시간 산출량 및 효율 분석 (Real-time Efficiency Insight)
+    html += `<div style="background:#f0fdf4; padding:12px; border-radius:6px; border-left:4px solid #22c55e;">`;
+    html += `<h3 style="margin:0 0 8px 0; color:#15803d; font-size:14px;">5. 실시간 산출량 및 효율 지표 (Efficiency Metrics)</h3>`;
+    html += `<ul style="margin:0 0 12px 0; padding-left:20px; font-size:13px; color:#166534; line-height:1.6;">`;
+    html += `<li><strong>시간당 종합 산출량 (System UPH):</strong> <span style="font-weight:bold;">${systemUph} 개/hr</span></li>`;
+    html += `<li><strong>제품 1개당 평균 이송 거리:</strong> ${avgDistPerItem} m</li>`;
+    html += `<li><strong>AMR 평균 실효 주행 속도:</strong> ${effectiveSpeed} m/s (감속 포함)</li>`;
+    html += `</ul>`;
+    
+    html += `<h4 style="margin:0 0 4px 0; color:#047857; font-size:13px;">💡 종합 효율 진단</h4>`;
+    html += `<p style="margin:0; font-size:12px; line-height:1.5; color:#064e3b;">`;
     if (avgLoadFactor > 95 || utilRate > 92) {
-        html += `시스템 부하와 AMR 활용률이 포화 상태입니다. 휴식/충전 시간 부족으로 인한 셧다운 위험이 있으므로 AMR 대수를 추가 투입하는 것이 절대적으로 권장됩니다.`;
+        html += `시스템 부하와 AMR 활용률이 한계치에 도달했습니다. 현재 산출량(${systemUph} 개/hr) 유지를 위해 셔틀 추가 투입이 권장됩니다.`;
     } else if (sysTrafficTime > 1800) {
-        html += `부하율은 적정하나 좁은 통로로 인한 트래픽(회피) 체증이 심각합니다(${formatTime(sysTrafficTime)} 소요). 배출 2라인(Dual Lane) 모드를 활성화하여 트래픽을 분산해보세요.`;
+        html += `동선 중복으로 인한 트래픽 체증이 비효율을 유발하고 있습니다. 시간당 산출량을 높이기 위해 배출 2라인 활성화를 권고합니다.`;
     } else if (utilRate < 50) {
-        html += `AMR 활용률이 매우 낮습니다(${utilRate.toFixed(1)}%). AMR 대수가 과잉 투입되었을 수 있으니 1대를 줄여서 재테스트하는 것을 권장합니다.`;
+        html += `현재 AMR 활용률(${utilRate.toFixed(1)}%)이 낮아 대기 자원이 낭비되고 있습니다. 차량 대수를 줄여도 원활한 물류 소화가 가능합니다.`;
     } else {
-        html += `전반적인 에너지 밸런스와 물류 처리량이 매우 안정적인 상태로, 최적의 AMR 대수 및 셋팅으로 판단됩니다.`;
+        html += `에너지 밸런스, 활용률, 산출량 등 모든 물류 처리 지표가 이상적인 구간에 있습니다. 매우 안정적이고 최적화된 상태입니다.`;
     }
     html += `</p></div>`;
 
