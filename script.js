@@ -1476,7 +1476,8 @@ window.showSimulationReport = function() {
     html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
     html += `<li><strong>목표 조업 시간:</strong> ${manager.targetHours}시간</li>`;
     html += `<li><strong>시스템 평균 부하율:</strong> ${avgLoadFactor.toFixed(1)}%</li>`;
-    html += `<li><strong>총 생산 수량:</strong> ${totalProd.toLocaleString()}개</li>`;
+    html += `<li><strong>총 배출 수량 (Total):</strong> ${totalProd.toLocaleString()}개</li>`;
+    html += `<li><strong>기종별 누적 배출량:</strong> M3 5X: <span style="color:#2563eb; font-weight:bold;">${global_production['M3 5X']}</span>개 | M3 UPPER: <span style="color:#16a34a; font-weight:bold;">${global_production['M3 UPPER']}</span>개 | M3 2ND: <span style="color:#d97706; font-weight:bold;">${global_production['M3 2ND']}</span>개</li>`;
     html += `<li><strong>설비(로더) 총 다운타임:</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
     html += `</ul></div>`;
 
@@ -1484,7 +1485,7 @@ window.showSimulationReport = function() {
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
     html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">2. AMR 활용률 및 유휴 시간 분석</h3>`;
     let utilColor = utilRate > 95 ? '#ef4444' : (utilRate > 80 ? '#10b981' : '#f59e0b');
-    html += `<p style="margin:0 0 8px 0; font-size:13px; color:#475569;"><strong>전체 평균 활용률:</strong> <span style="color:${utilColor}; font-weight:bold;">${utilRate.toFixed(1)}%</span> (권장치: 80~90%)</p>`;
+    html += `<p style="margin:0 0 8px 0; font-size:13px; color:#475569;"><strong>전체 평균 활용률:</strong> <span style="color:${utilColor}; font-weight:bold;">${utilRate.toFixed(1)}%</span></p>`;
     html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1;">`;
     html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">활성(작업)</th><th style="padding:4px;">유휴(대기)</th><th style="padding:4px;">충전소요</th></tr>`;
     amrs.forEach(a => {
@@ -1505,7 +1506,23 @@ window.showSimulationReport = function() {
     html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
     html += `<li><strong>기회 충전 총 횟수:</strong> ${sysChargeCount}회</li>`;
     html += `<li><strong>최저 배터리율(SOC Min):</strong> <span style="font-weight:bold; color:${minSocOverall < 20 ? '#ef4444' : '#10b981'}">${minSocOverall.toFixed(1)}%</span></li>`;
-    html += `</ul></div>`;
+    html += `</ul>`;
+    html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1; margin-top:8px;">`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">현재 배터리 잔량</th><th style="padding:4px;">현재 상태 (Status)</th></tr>`;
+    amrs.forEach(a => {
+        let batteryPct = ((a.battery / (8 * 3600)) * 100).toFixed(1);
+        let statusStr = "대기 중";
+        if (a.state === 'CHARGING') statusStr = "충전 중";
+        else if (a.payload > 0) statusStr = "작업 중 (적재)";
+        else if (a.state === 'EVADING_WAIT') statusStr = "회피 대기 중";
+        else if (a.active_time > 0 && a.target_ldr) statusStr = "이동 중 (빈 차)";
+        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
+            <td style="padding:4px; color:${batteryPct < 20 ? '#ef4444' : '#1e293b'}">${batteryPct}%</td>
+            <td style="padding:4px;">${statusStr}</td>
+        </tr>`;
+    });
+    html += `</table></div>`;
 
     // 4. 주행 트래픽 및 경로 효율성
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
@@ -1516,46 +1533,23 @@ window.showSimulationReport = function() {
     html += `<li><strong>총 주행 거리:</strong> ${sysTotalDist.toFixed(2)} km</li>`;
     html += `</ul></div>`;
     
-    // 로더 대기 랭킹 (Top 3)
-    if (sortedLoaders.length > 0) {
+    // 전체 로더 대기 현황 (대기 발생한 로더 전체)
+    let waitingLoaders = [...ldrs].filter(l => l.cumulative_wait > 0);
+    if (waitingLoaders.length > 0) {
         html += `<div style="margin-bottom:12px;">`;
-        html += `<h3 style="margin:0 0 8px 0; color:#334155; font-size:13px;">⚠️ 병목 로더 랭킹 (Top 3)</h3>`;
-        html += `<table style="width:100%; border-collapse:collapse; text-align:left; font-size:12px;">`;
-        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
-        sortedLoaders.slice(0, 3).forEach((l, i) => {
+        html += `<h3 style="margin:0 0 8px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h3>`;
+        html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
+        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
+        // ID 순으로 정렬하여 전부 표기
+        waitingLoaders.sort((a,b) => a.id - b.id).forEach((l) => {
             html += `<tr style="border-bottom:1px solid #e2e8f0;">
                 <td style="padding:4px 8px;">LOADER-${l.id+1} (${l.model.name})</td>
+                <td style="padding:4px 8px;">${l.wait_history.length}회</td>
                 <td style="padding:4px 8px; color:#ef4444; font-weight:bold;">${formatTime(l.cumulative_wait)}</td>
             </tr>`;
         });
         html += `</table></div>`;
     }
-
-    let systemUph = manager.global_time > 0 ? (totalProd / (manager.global_time / 3600)).toFixed(1) : 0;
-    let avgDistPerItem = totalProd > 0 ? ((sysTotalDist * 1000) / totalProd).toFixed(1) : 0;
-    let effectiveSpeed = sysActiveTime > 0 ? ((sysTotalDist * 1000) / sysActiveTime).toFixed(2) : 0;
-
-    // 5. 실시간 산출량 및 효율 분석 (Real-time Efficiency Insight)
-    html += `<div style="background:#f0fdf4; padding:12px; border-radius:6px; border-left:4px solid #22c55e;">`;
-    html += `<h3 style="margin:0 0 8px 0; color:#15803d; font-size:14px;">5. 실시간 산출량 및 효율 지표 (Efficiency Metrics)</h3>`;
-    html += `<ul style="margin:0 0 12px 0; padding-left:20px; font-size:13px; color:#166534; line-height:1.6;">`;
-    html += `<li><strong>시간당 종합 산출량 (System UPH):</strong> <span style="font-weight:bold;">${systemUph} 개/hr</span></li>`;
-    html += `<li><strong>제품 1개당 평균 이송 거리:</strong> ${avgDistPerItem} m</li>`;
-    html += `<li><strong>AMR 평균 실효 주행 속도:</strong> ${effectiveSpeed} m/s (감속 포함)</li>`;
-    html += `</ul>`;
-    
-    html += `<h4 style="margin:0 0 4px 0; color:#047857; font-size:13px;">💡 종합 효율 진단</h4>`;
-    html += `<p style="margin:0; font-size:12px; line-height:1.5; color:#064e3b;">`;
-    if (avgLoadFactor > 95 || utilRate > 92) {
-        html += `시스템 부하와 AMR 활용률이 한계치에 도달했습니다. 현재 산출량(${systemUph} 개/hr) 유지를 위해 셔틀 추가 투입이 권장됩니다.`;
-    } else if (sysTrafficTime > 1800) {
-        html += `동선 중복으로 인한 트래픽 체증이 비효율을 유발하고 있습니다. 시간당 산출량을 높이기 위해 배출 2라인 활성화를 권고합니다.`;
-    } else if (utilRate < 50) {
-        html += `현재 AMR 활용률(${utilRate.toFixed(1)}%)이 낮아 대기 자원이 낭비되고 있습니다. 차량 대수를 줄여도 원활한 물류 소화가 가능합니다.`;
-    } else {
-        html += `에너지 밸런스, 활용률, 산출량 등 모든 물류 처리 지표가 이상적인 구간에 있습니다. 매우 안정적이고 최적화된 상태입니다.`;
-    }
-    html += `</p></div>`;
 
     html += `</div>`; // scroll container 끝
 
