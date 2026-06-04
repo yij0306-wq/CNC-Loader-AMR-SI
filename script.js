@@ -504,7 +504,7 @@ class Loader {
             ctx.fillText('LOADER-'+(this.id+1),this.x, ty);
             
             if(this.id >= 13){ ctx.translate(this.x, this.y); ctx.scale(1, -1); ctx.translate(-this.x, -this.y); }
-            if (cncImg && cncImg.complete) {
+            if (cncImg && cncImg.complete && cncImg.naturalWidth > 0) {
                 ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
                 ctx.drawImage(cncImg, this.x+17, this.y-25, 65, 55);
             } else {
@@ -531,7 +531,7 @@ class Loader {
         }
         
         // CNC 설비 이미지 (좌/우 약 65x55px)
-        if (cncImg && cncImg.complete) {
+        if (cncImg && cncImg.complete && cncImg.naturalWidth > 0) {
             ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
             ctx.drawImage(cncImg, this.x+17, this.y-25, 65, 55);
         } else {
@@ -1817,7 +1817,7 @@ function draw(){
         ctx.translate(x, y); ctx.scale(1, -1); ctx.translate(-x, -y);
         ctx.fillStyle='rgba(248, 250, 252, 0.8)'; ctx.strokeStyle='#22c55e'; ctx.lineWidth=1.5;
         // 좌측 CNC
-        if (cncImg && cncImg.complete) {
+        if (cncImg && cncImg.complete && cncImg.naturalWidth > 0) {
             ctx.drawImage(cncImg, x-17-65, y-25, 65, 55);
             ctx.drawImage(cncImg, x+17, y-25, 65, 55);
         } else {
