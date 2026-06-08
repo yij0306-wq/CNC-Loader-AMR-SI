@@ -33,7 +33,8 @@ const OUTPUT_Y = 202; // AMR_LANE_Y(440) - 238(6m)
 const INPUT_ZONES = {
     'M3 5X':    { entryX: 1697, exitX: 1667, y: INPUT_Y },
     'M3 UPPER': { entryX: 1757, exitX: 1727, y: INPUT_Y },
-    'M3 2ND':   { entryX: 1817, exitX: 1787, y: INPUT_Y }
+    'M3 2ND':   { entryX: 1817, exitX: 1787, y: INPUT_Y },
+    'Min':      { entryX: 1877, exitX: 1847, y: INPUT_Y }
 };
 
 // CHARGE (오른쪽 전용 라인 및 베이)
@@ -48,7 +49,8 @@ const IO_X = 2450;
 const OUTPUT_ZONES = {
     'M3 5X':    { entryY: 200, exitY: 230, x: IO_X },
     'M3 UPPER': { entryY: 260, exitY: 290, x: IO_X },
-    'M3 2ND':   { entryY: 320, exitY: 350, x: IO_X }
+    'M3 2ND':   { entryY: 320, exitY: 350, x: IO_X },
+    'Min':      { entryY: 380, exitY: 410, x: IO_X }
 };
 
 function getIO(type, model) {
@@ -108,10 +110,11 @@ const COLOR_AMR = ['#2563eb','#10b981','#8b5cf6','#eab308'];
 const MODELS = [
     {name:'M3 5X',  ct:150},
     {name:'M3 UPPER',ct:150},
-    {name:'M3 2ND', ct:125}
+    {name:'M3 2ND', ct:125},
+    {name:'Min', ct:75}
 ];
 
-let global_production = {'M3 5X':0,'M3 UPPER':0,'M3 2ND':0};
+let global_production = {'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
 let priority_mode = 'LOADED_YIELDS';
 let eject_threshold = 8;
 let use_pre_eject = false; // [변경] 초기값 비활성화
@@ -326,6 +329,7 @@ class SimulationManager {
         document.getElementById('prod-m3-5x').innerText   = global_production['M3 5X'].toLocaleString();
         document.getElementById('prod-m3-upper').innerText = global_production['M3 UPPER'].toLocaleString();
         document.getElementById('prod-m3-2nd').innerText  = global_production['M3 2ND'].toLocaleString();
+        if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText  = global_production['Min'].toLocaleString();
     }
 
     captureState() {
@@ -1332,32 +1336,27 @@ function setupLoaderGrid() {
         div.className = 'loader-setting';
         const labelStyle = use_pre_eject ? 'color:#2563eb; font-weight:bold;' : 'color:#64748b;';
         div.innerHTML = `
-            <div class="loader-setting-header">
-                <span>#${i+1}</span>
-                <span id="st-${i}" class="${l.active ? 'status-on' : 'status-off'}">${l.active ? 'ON' : 'OFF'}</span>
+            <div class="loader-setting-header" style="margin-bottom:2px;">
+                <span style="font-size:12px;">#${i+1}</span>
+                <select style="width:65px; padding:2px; font-size:10px; margin-left:4px;" onchange="window.updateLoaderModel(${i}, this.value)">
+                    ${MODELS.map(m => `<option value="${m.name}" ${l.model.name === m.name ? 'selected' : ''}>${m.name.replace('M3 ','')}</option>`).join('')}
+                </select>
+                <span id="st-${i}" class="${l.active ? 'status-on' : 'status-off'}" style="margin-left:auto;">${l.active ? 'ON' : 'OFF'}</span>
             </div>
-            <select onchange="window.updateLoaderModel(${i}, this.value)">
-                ${MODELS.map(m => `<option value="${m.name}" ${l.model.name === m.name ? 'selected' : ''}>${m.name}</option>`).join('')}
-            </select>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="color:#64748b">초/1개:</span>
-                <input type="number" id="ct-input-${i}" value="${l.cycleTime}" onchange="ldrs[${i}].cycleTime = parseInt(this.value)">
+            <div style="display:flex; justify-content:space-between; margin-top:2px;">
+                <div style="display:flex; align-items:center; gap:2px;"><span style="color:#64748b; font-size:10px;">초/개:</span><input type="number" id="ct-input-${i}" value="${l.cycleTime}" style="width:35px; padding:1px; font-size:10px;" onchange="ldrs[${i}].cycleTime = parseInt(this.value)"></div>
+                <div style="display:flex; align-items:center; gap:2px;"><span style="color:#64748b; font-size:10px;">시작:</span><input type="number" value="${l.startTrays}" min="1" max="8" style="width:30px; padding:1px; font-size:10px;" onchange="window.setLoaderStartTray(${i}, parseInt(this.value))"></div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="color:#64748b">시작칸수:</span>
-                <input type="number" value="${l.startTrays}" min="1" max="8" onchange="window.setLoaderStartTray(${i}, parseInt(this.value))">
+            <div style="display:flex; justify-content:space-between; margin-top:2px;">
+                <div style="display:flex; align-items:center; gap:2px;"><span id="pre-eject-label-${i}" style="${labelStyle} font-size:10px;">사전:</span><input type="number" value="${l.preEjectTrays}" min="1" max="9" style="width:30px; padding:1px; font-size:10px;" onchange="window.setLoaderPreEject(${i}, parseInt(this.value))"></div>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span id="pre-eject-label-${i}" style="${labelStyle}">사전배출:</span>
-                <input type="number" value="${l.preEjectTrays}" min="1" max="9" onchange="window.setLoaderPreEject(${i}, parseInt(this.value))">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; background:#f1f5f9; padding:2px 4px; border-radius:4px;">
+                <span style="font-weight:bold; font-size:10px;">대기:</span>
+                <span id="ldr-wait-${i}" style="font-weight:bold; font-size:11px; font-family:monospace;">00:00:00</span>
             </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; background:#f1f5f9; padding:4px 8px; border-radius:6px; transition: all 0.2s ease;">
-                <span style="font-weight:800; font-size:11px;">물류대기:</span>
-                <span id="ldr-wait-${i}" style="font-weight:800; font-size:13px; font-family:JetBrains Mono, monospace;">00:00:00</span>
-            </div>
-            <div style="display:flex; gap:4px;">
-                <button class="btn btn-toggle" style="flex:1" onclick="window.toggleLoader(${i})">Toggle</button>
-                <button class="btn" style="flex:1; background:#6366f1; color:white; font-size:11px; padding:4px;" onclick="window.showLoaderLog(${i})">상세로그</button>
+            <div style="display:flex; gap:2px; margin-top:4px;">
+                <button class="btn btn-toggle" style="flex:1; padding:2px; font-size:10px;" onclick="window.toggleLoader(${i})">Toggle</button>
+                <button class="btn" style="flex:1; background:#6366f1; color:white; font-size:10px; padding:2px;" onclick="window.showLoaderLog(${i})">로그</button>
             </div>
         `;
         grid.appendChild(div);
@@ -1371,24 +1370,28 @@ function setupAmrGrid() {
         const div = document.createElement('div');
         div.className = 'amr-setting';
         div.innerHTML = `
-            <div class="amr-setting-header">
-                <span style="color:${a.color}">AMR #${i+1}</span>
+            <div class="amr-setting-header" style="margin-bottom:2px; font-size:12px;">
+                <span style="color:${a.color}; font-weight:bold;">AMR #${i+1}</span>
             </div>
-            <div class="amr-battery-bar-container">
+            <div class="amr-battery-bar-container" style="height:6px; margin-bottom:2px;">
                 <div id="amr-bat-bar-${i}" class="amr-battery-bar" style="width:100%"></div>
             </div>
-            <div class="amr-battery-info" id="amr-bat-text-${i}">8h 0m (100%)</div>
-            <div class="amr-controls">
-                <span>속도:</span>
-                <button class="btn-small" onclick="window.adjAmrSpeed(${i}, -0.1)">▼</button>
-                <span id="amr-spd-${i}">${a.speed_mps.toFixed(1)}m/s</span>
-                <button class="btn-small" onclick="window.adjAmrSpeed(${i}, 0.1)">▲</button>
+            <div class="amr-battery-info" id="amr-bat-text-${i}" style="font-size:10px; margin-bottom:4px;">8h 0m (100%)</div>
+            <div class="amr-controls" style="font-size:10px; margin-bottom:2px;">
+                <span style="color:#64748b;">속도:</span>
+                <div style="display:flex; align-items:center; gap:2px;">
+                    <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrSpeed(${i}, -0.1)">-</button>
+                    <span id="amr-spd-${i}" style="width:35px; text-align:center;">${a.speed_mps.toFixed(1)}m/s</span>
+                    <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrSpeed(${i}, 0.1)">+</button>
+                </div>
             </div>
-            <div class="amr-controls">
-                <span>복귀:</span>
-                <button class="btn-small" onclick="window.adjAmrReturnTime(${i}, -1800)">-</button>
-                <span id="amr-ret-time-${i}">${(a.min_return_time / 3600).toFixed(1)}h</span>
-                <button class="btn-small" onclick="window.adjAmrReturnTime(${i}, 1800)">+</button>
+            <div class="amr-controls" style="font-size:10px;">
+                <span style="color:#64748b;">복귀:</span>
+                <div style="display:flex; align-items:center; gap:2px;">
+                    <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrReturnTime(${i}, -1800)">-</button>
+                    <span id="amr-ret-time-${i}" style="width:35px; text-align:center;">${(a.min_return_time / 3600).toFixed(1)}h</span>
+                    <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrReturnTime(${i}, 1800)">+</button>
+                </div>
             </div>
         `;
         grid.appendChild(div);
@@ -1477,7 +1480,7 @@ window.showSimulationReport = function() {
     html += `<li><strong>목표 조업 시간:</strong> ${manager.targetHours}시간</li>`;
     html += `<li><strong>시스템 평균 부하율:</strong> ${avgLoadFactor.toFixed(1)}%</li>`;
     html += `<li><strong>총 배출 수량 (Total):</strong> ${totalProd.toLocaleString()}개</li>`;
-    html += `<li><strong>기종별 누적 배출량:</strong> M3 5X: <span style="color:#2563eb; font-weight:bold;">${global_production['M3 5X']}</span>개 | M3 UPPER: <span style="color:#16a34a; font-weight:bold;">${global_production['M3 UPPER']}</span>개 | M3 2ND: <span style="color:#d97706; font-weight:bold;">${global_production['M3 2ND']}</span>개</li>`;
+    html += `<li><strong>기종별 누적 배출량:</strong> M3 5X: <span style="color:#2563eb; font-weight:bold;">${global_production['M3 5X']}</span>개 | M3 UPPER: <span style="color:#16a34a; font-weight:bold;">${global_production['M3 UPPER']}</span>개 | M3 2ND: <span style="color:#d97706; font-weight:bold;">${global_production['M3 2ND']}</span>개 | Min: <span style="color:#ec4899; font-weight:bold;">${global_production['Min']}</span>개</li>`;
     html += `<li><strong>설비(로더) 총 다운타임:</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
     html += `</ul>`;
     
@@ -1523,14 +1526,11 @@ window.showSimulationReport = function() {
     // 3. 배터리 소모 및 충전 관리
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
     html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">3. 배터리 소모 및 충전 관리</h3>`;
-    html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
-    html += `<li><strong>기회 충전 총 횟수:</strong> ${sysChargeCount}회</li>`;
-    html += `<li><strong>최저 배터리율(SOC Min):</strong> <span style="font-weight:bold; color:${minSocOverall < 20 ? '#ef4444' : '#10b981'}">${minSocOverall.toFixed(1)}%</span></li>`;
-    html += `</ul>`;
     html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1; margin-top:8px;">`;
-    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">현재 배터리 잔량</th><th style="padding:4px;">현재 상태 (Status)</th></tr>`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">기회 충전 횟수</th><th style="padding:4px;">최저 배터리율</th><th style="padding:4px;">현재 잔량</th><th style="padding:4px;">현재 상태 (Status)</th></tr>`;
     amrs.forEach(a => {
         let batteryPct = ((a.battery / (8 * 3600)) * 100).toFixed(1);
+        let minSocPct = a.min_soc.toFixed(1);
         let statusStr = "대기 중";
         if (a.state === 'CHARGING') statusStr = "충전 중";
         else if (a.payload > 0) statusStr = "작업 중 (적재)";
@@ -1538,6 +1538,8 @@ window.showSimulationReport = function() {
         else if (a.active_time > 0 && a.target_ldr) statusStr = "이동 중 (빈 차)";
         html += `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
+            <td style="padding:4px;">${a.charge_count}회</td>
+            <td style="padding:4px; font-weight:bold; color:${a.min_soc < 20 ? '#ef4444' : '#10b981'}">${minSocPct}%</td>
             <td style="padding:4px; color:${batteryPct < 20 ? '#ef4444' : '#1e293b'}">${batteryPct}%</td>
             <td style="padding:4px;">${statusStr}</td>
         </tr>`;
@@ -1547,12 +1549,19 @@ window.showSimulationReport = function() {
     // 4. 주행 트래픽 및 경로 효율성
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
     html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">4. 주행 트래픽 및 경로 효율성</h3>`;
-    html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
-    let distPerHour = manager.global_time > 0 ? (sysTotalDist / (manager.global_time / 3600)).toFixed(2) : 0;
-    html += `<li><strong>교착/회피(Siding) 발생 횟수:</strong> ${sysEvasionCount}회</li>`;
-    html += `<li><strong>총 주행 거리:</strong> ${sysTotalDist.toFixed(2)} km</li>`;
-    html += `<li><strong>시간당 주행 거리:</strong> ${distPerHour} km/hr</li>`;
-    html += `</ul></div>`;
+    html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1; margin-top:8px;">`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">교착/회피 횟수</th><th style="padding:4px;">총 주행 거리</th><th style="padding:4px;">시간당 주행 거리</th></tr>`;
+    amrs.forEach(a => {
+        let amrDist = a.total_distance / PX_PER_M / 1000;
+        let amrDistPerHour = manager.global_time > 0 ? (amrDist / (manager.global_time / 3600)).toFixed(2) : 0;
+        html += `<tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
+            <td style="padding:4px;">${a.evasion_count}회</td>
+            <td style="padding:4px;">${amrDist.toFixed(2)} km</td>
+            <td style="padding:4px;">${amrDistPerHour} km/hr</td>
+        </tr>`;
+    });
+    html += `</table></div>`;
     
 
 
@@ -1566,10 +1575,11 @@ function init(){
     manager = new SimulationManager();
     manager.speed = 1; // [변경] 기본 1배속 설정
     manager.targetHours = 10; // [변경] 기본 10시간 설정
-    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0};
+    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
     document.getElementById('prod-m3-5x').innerText='0';
     document.getElementById('prod-m3-upper').innerText='0';
     document.getElementById('prod-m3-2nd').innerText='0';
+    if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText='0';
     updateExtraSidings();
     ldrs=[]; amrs=[];
     const gap = CORRIDOR_PX / 12;
@@ -1616,19 +1626,25 @@ function update(dt){
     const corrActive = corr_speed_amr_count > 0 && corrInCount >= corr_speed_amr_count;
 
     // corrActive=true 이면 sim_dt=dt(1배속), false 이면 설정 배속 그대로
-    let sim_dt = corrActive ? dt : dt * manager.speed;
+    let total_sim_dt = corrActive ? dt : dt * manager.speed;
+    const MAX_STEP = 0.1; // 즉시완료 모드와 완벽히 동일한 정밀도를 보장하기 위한 고정 타임스텝
 
-    manager.update(sim_dt);
-    if (!manager.paused && manager.mode === 'FORWARD') {
-        ldrs.forEach(l => l.update(sim_dt));          // 로더 생산 타임 동기화
-        let loadFactor = runAnalysis(sim_dt);         // 분석/UI 업데이트
-        manager.totalLoadFactor += loadFactor * sim_dt;
-        manager.loadSamples += sim_dt;
-        amrs.forEach(a => a.update(manager, amrs, ldrs, loadFactor, sim_dt)); // 모든 AMR 동기화
-    } else {
-        runAnalysis(0); // 정지 상태에서도 UI(배터리 등) 갱신
-        if (!manager.paused && manager.mode === 'REVERSE') {
-            // manager.update 내에서 rewind() 수행됨
+    while(total_sim_dt > 0 && !manager.paused) {
+        let sim_dt = Math.min(total_sim_dt, MAX_STEP);
+        total_sim_dt -= sim_dt;
+
+        manager.update(sim_dt);
+        if (!manager.paused && manager.mode === 'FORWARD') {
+            ldrs.forEach(l => l.update(sim_dt));          // 로더 생산 타임 동기화
+            let loadFactor = runAnalysis(sim_dt);         // 분석/UI 업데이트
+            manager.totalLoadFactor += loadFactor * sim_dt;
+            manager.loadSamples += sim_dt;
+            amrs.forEach(a => a.update(manager, amrs, ldrs, loadFactor, sim_dt)); // 모든 AMR 동기화
+        } else {
+            runAnalysis(0); // 정지 상태에서도 UI(배터리 등) 갱신
+            if (!manager.paused && manager.mode === 'REVERSE') {
+                // manager.update 내에서 rewind() 수행됨
+            }
         }
     }
 }
@@ -1731,7 +1747,7 @@ function draw(){
         let ix=zone.entryX, iy=zone.y;
         let iEntX=zone.entryX, iExX=zone.exitX;
         let iLaneY=dual_lane?OUTPUT_LANE_Y:AMR_LANE_Y;
-        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND'];
+        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
         
         ctx.strokeStyle='rgba(234,88,12,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
         ctx.beginPath(); ctx.moveTo(iEntX,iLaneY); ctx.lineTo(iEntX,iy-45); ctx.stroke(); ctx.setLineDash([]);
@@ -1788,7 +1804,7 @@ function draw(){
         // ===== MULTI OUTPUT ZONES =====
     Object.values(OUTPUT_ZONES).forEach((zone, i) => {
         let ox=zone.x, oEntY=zone.entryY, oExY=zone.exitY;
-        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND'];
+        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
 
         ctx.strokeStyle='rgba(59,130,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
         ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oEntY); ctx.lineTo(ox-30,oEntY); ctx.stroke(); ctx.setLineDash([]);
@@ -1999,10 +2015,11 @@ function softReset() {
     manager.history = []; // V40: 히스토리도 초기화
     manager.totalLoadFactor = 0;
     manager.loadSamples = 0;
-    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0};
+    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
     document.getElementById('prod-m3-5x').innerText='0';
     document.getElementById('prod-m3-upper').innerText='0';
     document.getElementById('prod-m3-2nd').innerText='0';
+    if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText='0';
     stats = { calls: 0, totalWait: 0 };
     // V40: UI 즉시 갱신
     if (document.getElementById('val-wait')) document.getElementById('val-wait').innerText = '00:00:00';
@@ -2058,6 +2075,17 @@ function hardReset() {
     location.reload();
 }
 
+document.getElementById('btn-apply-min-all').addEventListener('click', () => {
+    ldrs.forEach((l, i) => {
+        if(l.active) {
+            window.updateLoaderModel(i, 'Min');
+        }
+    });
+    if (typeof setupLoaderGrid === 'function') {
+        setupLoaderGrid();
+    }
+});
+
 document.getElementById('btn-soft-reset').addEventListener('click',()=>{
     softReset();
 });
@@ -2066,8 +2094,63 @@ document.getElementById('btn-hard-reset').addEventListener('click',()=>{
     hardReset();
 });
 
-document.getElementById('btn-toggle-bg').addEventListener('click', () => {
-    document.querySelector('.canvas-container').classList.toggle('simple-bg');
+document.getElementById('btn-instant-complete').addEventListener('click', (e) => {
+    if (manager.targetHours <= 0) {
+        alert("조업 목표 시간이 '사용 안함'으로 설정되어 있습니다. 시간을 선택해주세요.");
+        return;
+    }
+    
+    // UI 반영
+    manager.paused = false;
+    manager.mode = 'FORWARD';
+    const btnPause = document.getElementById('btn-pause');
+    if (btnPause) {
+        document.querySelectorAll('#btn-pause,#btn-start,#btn-backward').forEach(b=>b.classList.remove('active'));
+        document.getElementById('btn-start').classList.add('active');
+    }
+    
+    const targetSecs = manager.targetHours * 3600;
+    const btn = e.target;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.style.opacity = '0.8';
+    
+    // 강제 1배속 설정 및 비동기 분할 연산 (Chunking)
+    function processChunk() {
+        if (manager.paused) {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            return;
+        }
+        
+        // 1시간 분량(3600초)을 한 프레임에 연산 (JS 성능상 충분히 빠르지만 멈춤을 방지)
+        let chunkEnd = manager.global_time + 3600;
+        let limit = Math.min(chunkEnd, targetSecs);
+        
+        // ★ 핵심: 즉시 완료 시뮬레이션 중에는 1배속 강제 고정하여 정밀도 보장
+        manager.speed = 1;
+        
+        while(manager.global_time < limit && !manager.paused) {
+            // 내부 시간 가속은 0.1초 단위 고정
+            update(0.1);
+        }
+        
+        let percent = ((manager.global_time / targetSecs) * 100).toFixed(1);
+        btn.innerText = `⚡ ${percent}% 완료...`;
+        
+        if (manager.global_time < targetSecs) {
+            // 화면(진행률) 렌더링 후 다음 Chunk 연산 재개
+            requestAnimationFrame(processChunk);
+        } else {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            draw(); // 최종 렌더링 1회 수행
+        }
+    }
+    
+    processChunk();
 });
 
 init();

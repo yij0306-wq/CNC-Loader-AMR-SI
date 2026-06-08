@@ -277,28 +277,35 @@ canvas {
     100% { transform: scale(1.0); }
 }
 
+/* Settings Container */
+.settings-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 5px;
+    zoom: 0.85;
+}
+
 /* Loader Settings Grid */
 .loader-grid {
     display: grid;
-    grid-template-columns: repeat(16, 1fr);
-    gap: 2px;
-    margin-bottom: 2px;
-    padding: 4px;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    padding: 6px;
     background: #f8fafc;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
-    zoom: 0.85;
+    flex: 4;
 }
 .loader-setting {
     background: #ffffff;
-    padding: 5px;
+    padding: 6px;
     border-radius: 8px;
     font-size: 11px;
     border: 1px solid #cbd5e1;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    min-height: 125px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 .loader-setting-header {
     display: flex;
@@ -334,19 +341,23 @@ canvas {
 /* AMR Settings Grid */
 .amr-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-    margin-bottom: 5px;
-    zoom: 0.85;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 6px;
+    background: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    flex: 1;
 }
 .amr-setting {
-    background: #f1f5f9;
-    padding: 10px 15px;
+    background: #ffffff;
+    padding: 8px 10px;
     border-radius: 8px;
     border: 1px solid #cbd5e1;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 .amr-setting-header {
     display: flex;
