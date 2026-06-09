@@ -504,7 +504,7 @@ class Loader {
         if (!this.active) {
             ctx.fillStyle='#94a3b8'; ctx.font='800 14px Inter,sans-serif';
             ctx.textAlign='center'; ctx.textBaseline='middle';
-            let ty = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 45;
+            let ty = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 70;
             ctx.fillText('LOADER-'+(this.id+1),this.x, ty);
             
             if(this.id >= 13){ ctx.translate(this.x, this.y); ctx.scale(1, -1); ctx.translate(-this.x, -this.y); }
@@ -599,11 +599,11 @@ class Loader {
         // TEXT DRAWING (항상 정방향, 1열은 2열 및 CNC에 안 가려지도록 위치 세밀 조정)
         ctx.fillStyle='#0f172a'; ctx.font='900 13px Inter,sans-serif';
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        let textY1 = this.id >= 13 ? TOP_AMR_LANE_Y - 90 : this.y - 50;
-        let textY2 = this.id >= 13 ? TOP_AMR_LANE_Y - 75 : this.y - 37;
-        let textY3 = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 24;
-        let textY4 = this.id >= 13 ? TOP_AMR_LANE_Y - 45 : this.y - 11;
-        let textYWait = this.id >= 13 ? TOP_AMR_LANE_Y - 105 : this.y - 65;
+        let textY1 = this.id >= 13 ? TOP_AMR_LANE_Y - 90 : this.y - 75;
+        let textY2 = this.id >= 13 ? TOP_AMR_LANE_Y - 75 : this.y - 62;
+        let textY3 = this.id >= 13 ? TOP_AMR_LANE_Y - 60 : this.y - 49;
+        let textY4 = this.id >= 13 ? TOP_AMR_LANE_Y - 45 : this.y - 36;
+        let textYWait = this.id >= 13 ? TOP_AMR_LANE_Y - 105 : this.y - 90;
         
         ctx.fillText('LOADER-'+(this.id+1),this.x, textY1);
         ctx.fillStyle='#2563eb'; ctx.font='bold 11px Inter';
