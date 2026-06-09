@@ -1289,8 +1289,8 @@ case 'TO_CHARGE_DOCK': {
         ctx.save();
         if (this.last_main_dir !== undefined) ctx.rotate(this.last_main_dir);
 
-        // ★ [CorrSpeed] 중앙통로 1배속 제한 중인 AMR 테두리 강조
-        const corrLimited = isCorrSpeedLimited(this);
+        // ★ [EvasionWatch] 회피 관찰 중일 때 통로 내 AMR 테두리 강조
+        const corrLimited = evasion_watch_active && isEvasionProximity() && isInCorridor(this);
         let isMoving = this.state !== 'WAITING_INPUT' && this.state !== 'CHARGING' && this.state !== 'EVADING_WAIT';
         let glowAmp = isMoving ? (Math.abs(Math.sin(Date.now()/100)) * 25 + 10) : 0;
         
