@@ -1026,7 +1026,7 @@ case 'TO_CHARGE_DOCK': {
                 }
                 break;
 
-            case 'TO_INPUT_LANE_UP':
+            case 'TO_INPUT_LANE_UP': {
                 let dirUp = Math.sign(AMR_LANE_Y - this.pos.y);
                 let aheadUp = amrs.find(o => o.id !== this.id && o.state === 'TO_INPUT_LANE_UP' && Math.sign(o.pos.y - this.pos.y) === dirUp && Math.abs(o.pos.y - this.pos.y) < 60);
                 if (aheadUp) return;
@@ -1045,6 +1045,7 @@ case 'TO_CHARGE_DOCK': {
                     }
                 }
                 break;
+            }
 
             case 'MOVING_ON_LANE':
                 // 이동 중 동적 재배정 제거 (최초 배정 룰 준수)
@@ -1125,7 +1126,7 @@ case 'TO_CHARGE_DOCK': {
                 }
                 break;
 
-            case 'MOVING_ON_VERTICAL_FOR_OUTPUT':
+            case 'MOVING_ON_VERTICAL_FOR_OUTPUT': {
                 let dir = Math.sign(getIO('OUT',this.current_io_model).entryY - this.pos.y);
                 let aheadUp = amrs.find(o => o.id !== this.id && o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' && Math.sign(o.pos.y - this.pos.y) === dir && Math.abs(o.pos.y - this.pos.y) < 60);
                 if (aheadUp) return;
@@ -1133,6 +1134,7 @@ case 'TO_CHARGE_DOCK': {
                     this.state='TO_OUTPUT_DOCK';
                 }
                 break;
+            }
 
             case 'TO_OUTPUT_DOCK':
                 // 파란 박스 시작점(IO_X - 10)에 세로 상태인 AMR(폭 20) 끝단이 딱 맞게 정차 (센터 기준 -20)
@@ -1169,7 +1171,7 @@ case 'TO_CHARGE_DOCK': {
                 }
                 break;
 
-            case 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT':
+            case 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT': {
                 let dirDown = Math.sign(AMR_LANE_Y - this.pos.y);
                 let aheadDown = amrs.find(o => o.id !== this.id && o.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT' && Math.sign(o.pos.y - this.pos.y) === dirDown && Math.abs(o.pos.y - this.pos.y) < 60);
                 if (aheadDown) return;
@@ -1177,6 +1179,7 @@ case 'TO_CHARGE_DOCK': {
                     this.state='FROM_OUTPUT_DOCK';
                 }
                 break;
+            }
 
             case 'FROM_OUTPUT_DOCK':
                 let canCharge3 = this.battery <= this.min_return_time;
