@@ -817,24 +817,6 @@ class AMR {
                 if(o.state==='REVERSING_FROM_OUTPUT_DOCK') otx=getIO('OUT',o.current_io_model).exitX;
                 if(o.state==='FROM_CHARGE_DOCK') otx=CHARGE_EXIT_NODE.x;
                 let conflict=false;
-                if (my_tx === VERTICAL_LANE_X && this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') {
-                    // Output 구역에 내가 가고자 하는 모델의 존에 다른 차가 있는지 검사
-                    if (o.current_io_model === this.current_io_model && (o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || o.state === 'TO_OUTPUT_DOCK' || o.state === 'UNLOADING' || o.state === 'MOVE_TO_EXIT_Y_AT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE')) {
-                        conflict = true;
-                    }
-                    // 또한, 내가 가려는 중에 수직 통로(VERTICAL_LANE_X)에서 내려오는 차가 있으면 진입 대기
-                    if (o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE') {
-                        conflict = true;
-                    }
-                }
-                if(Object.values(INPUT_ZONES).some(z=>z.exitX===my_tx)){
-                    if(o.current_io_model === this.current_io_model && (o.state==='WAITING_INPUT'||o.state==='TO_INPUT_LANE'||o.state==='TO_INPUT_DOCK'||o.state==='EXIT_INPUT_SIDE')){
-                        conflict = true;
-                    }
-                }
-                if(my_tx===CHARGE_ENTRY_NODE.x && this.state === 'TO_CHARGE_DOCK'){
-                    if(o.state==='ENTERING_BAY'||o.state==='TO_CHARGE_DOCK'||o.state==='EXITING_BAY') conflict=true;
-                }
                 if(!conflict){
                     let myL = (dual_lane && this.payload>0) ? OUTPUT_LANE_Y : AMR_LANE_Y;
                     if(Math.abs(o.pos.y - myL) < 15){
@@ -1047,12 +1029,23 @@ case 'TO_CHARGE_DOCK': {
                 break;
             }
 
-            case 'MOVING_ON_LANE':
-                // 이동 중 동적 재배정 제거 (최초 배정 룰 준수)
-                if(this.moveTowards(this.target_x, this.getTargetLaneY(), step)){
-                    this.state = this.next_state;
+            case 'MOVING_ON_LANE': {
+                let actual_target_x = this.target_x;
+                if (this.target_x === VERTICAL_LANE_X && this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') {
+                    let occupied = amrs.some(o => o.id !== this.id && (
+                        (o.current_io_model === this.current_io_model && (o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || o.state === 'TO_OUTPUT_DOCK' || o.state === 'UNLOADING' || o.state === 'MOVE_TO_EXIT_Y_AT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE')) ||
+                        o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE'
+                    ));
+                    if (occupied) actual_target_x = VERTICAL_LANE_X - 60;
+                }
+                
+                if(this.moveTowards(actual_target_x, this.getTargetLaneY(), step)){
+                    if (actual_target_x === this.target_x) {
+                        this.state = this.next_state;
+                    }
                 }
                 break;
+            }
 
             case 'DOCKING_IN':{
                 if(dual_lane){
