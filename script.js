@@ -833,25 +833,20 @@ class AMR {
                     }
                 }
                 if(!conflict){
-                    if(o.pos.y>DOCKING_Y+10){
-                        let skipFront=false;
-                        if(dual_lane){
-                            let myL=(this.payload>0)?OUTPUT_LANE_Y:AMR_LANE_Y;
-                            let oL=(o.payload>0)?OUTPUT_LANE_Y:AMR_LANE_Y;
-                            if(Math.abs(myL-oL)>=15) skipFront=true;
-                        }
-                        if(!skipFront&&Math.abs(o.pos.x-this.pos.x)<evade_detect_range){
+                    let myL = (dual_lane && this.payload>0) ? OUTPUT_LANE_Y : AMR_LANE_Y;
+                    if(Math.abs(o.pos.y - myL) < 15){
+                        if(Math.abs(o.pos.x-this.pos.x)<evade_detect_range){
                             // NEW COLLISION LOGIC
                             let my_dir = Math.sign(my_tx - this.pos.x);
                             let o_dir = Math.sign(otx - o.pos.x);
                             let dist_to_o = o.pos.x - this.pos.x;
                             if (my_dir !== 0 && Math.sign(dist_to_o) === my_dir) {
                                 // o is strictly in front of me
-                                if (my_dir !== o_dir) {
-                                    // head-on or o is stopped
+                                if (my_dir === -o_dir && o_dir !== 0) {
+                                    // strict head-on
                                     conflict = true;
                                 } else {
-                                    // same direction
+                                    // same direction, or o is stopped/moving vertically
                                     if (Math.abs(dist_to_o) < 80) blocked = true;
                                 }
                             }
