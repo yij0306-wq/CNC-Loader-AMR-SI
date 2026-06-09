@@ -1920,11 +1920,11 @@ document.getElementById('btn-pause').addEventListener('click',e=>{
 document.getElementById('btn-1x').addEventListener('click',e=>{manager.speed=1;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
 document.getElementById('btn-5x').addEventListener('click',e=>{manager.speed=5;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
 document.getElementById('btn-10x').addEventListener('click',e=>{manager.speed=10;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
-document.getElementById('btn-20x').addEventListener('click',e=>{manager.speed=20;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
-document.getElementById('btn-50x').addEventListener('click',e=>{manager.speed=50;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
-document.getElementById('btn-100x').addEventListener('click',e=>{manager.speed=100;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
-document.getElementById('btn-200x').addEventListener('click',e=>{manager.speed=200;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
-document.getElementById('btn-300x').addEventListener('click',e=>{manager.speed=300;setActive('#btn-1x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-20x').addEventListener('click',e=>{manager.speed=20;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-50x').addEventListener('click',e=>{manager.speed=50;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-100x').addEventListener('click',e=>{manager.speed=100;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-200x').addEventListener('click',e=>{manager.speed=200;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
+document.getElementById('btn-300x').addEventListener('click',e=>{manager.speed=300;setActive('#btn-1x,#btn-5x,#btn-10x,#btn-20x,#btn-50x,#btn-100x,#btn-200x,#btn-300x',e.target);});
 
 // [NEW] 조업 목표 시간 설정 리스너
 document.getElementById('select-target-time').addEventListener('change', e => {
