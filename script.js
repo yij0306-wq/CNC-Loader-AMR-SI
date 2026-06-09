@@ -778,12 +778,12 @@ class AMR {
         }
 
         // 수직 레인 (입차, 출차) 충전 라인 간격 유지
-        if (this.pos.x === CHARGE_ENTRY_X && this.pos.y > AMR_LANE_Y + 10) {
-            let ahead = amrs.find(o => o.id !== this.id && o.pos.x === CHARGE_ENTRY_X && o.pos.y > this.pos.y && Math.abs(o.pos.y - this.pos.y) < 60);
+        if (this.state === 'TO_CHARGE_DOCK') {
+            let ahead = amrs.find(o => o.id !== this.id && Math.abs(o.pos.x - CHARGE_ENTRY_X) < 40 && o.pos.y > this.pos.y && Math.abs(o.pos.y - this.pos.y) < 60);
             if (ahead) return;
         }
-        if (this.pos.x === CHARGE_EXIT_X && this.pos.y > AMR_LANE_Y + 10) {
-            let ahead = amrs.find(o => o.id !== this.id && o.pos.x === CHARGE_EXIT_X && o.pos.y < this.pos.y && Math.abs(o.pos.y - this.pos.y) < 60);
+        if (this.state === 'FROM_CHARGE_DOCK') {
+            let ahead = amrs.find(o => o.id !== this.id && Math.abs(o.pos.x - CHARGE_EXIT_X) < 40 && o.pos.y < this.pos.y && Math.abs(o.pos.y - this.pos.y) < 60);
             if (ahead) return;
         }
 
@@ -817,20 +817,23 @@ class AMR {
                 if(o.state==='REVERSING_FROM_OUTPUT_DOCK') otx=getIO('OUT',o.current_io_model).exitX;
                 if(o.state==='FROM_CHARGE_DOCK') otx=CHARGE_EXIT_NODE.x;
                 let conflict=false;
-                if(Object.values(OUTPUT_ZONES).some(z=>z.entryX===my_tx)){
-                    if(Object.values(OUTPUT_ZONES).some(z=>Math.abs(o.pos.x-z.entryX)<50||Math.abs(o.pos.x-z.exitX)<50)&&o.pos.y>DOCKING_Y+10){
-                        if(o.state==='UNLOADING'||o.state==='EXIT_OUTPUT_SIDE'||o.state==='FROM_OUTPUT_DOCK'||o.state==='TO_OUTPUT_DOCK') conflict=true;
+                if (my_tx === VERTICAL_LANE_X && this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') {
+                    // Output 구역에 내가 가고자 하는 모델의 존에 다른 차가 있는지 검사
+                    if (o.current_io_model === this.current_io_model && (o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || o.state === 'TO_OUTPUT_DOCK' || o.state === 'UNLOADING' || o.state === 'MOVE_TO_EXIT_Y_AT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE')) {
+                        conflict = true;
+                    }
+                    // 또한, 내가 가려는 중에 수직 통로(VERTICAL_LANE_X)에서 내려오는 차가 있으면 진입 대기
+                    if (o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE') {
+                        conflict = true;
                     }
                 }
                 if(Object.values(INPUT_ZONES).some(z=>z.exitX===my_tx)){
-                    if(Object.values(INPUT_ZONES).some(z=>Math.abs(o.pos.x-z.entryX)<50||Math.abs(o.pos.x-z.exitX)<50)&&o.pos.y>DOCKING_Y+10){
-                        if(o.state==='WAITING_INPUT'||o.state==='TO_INPUT_LANE'||o.state==='TO_INPUT_DOCK'||o.state==='EXIT_INPUT_SIDE') conflict=true;
+                    if(o.current_io_model === this.current_io_model && (o.state==='WAITING_INPUT'||o.state==='TO_INPUT_LANE'||o.state==='TO_INPUT_DOCK'||o.state==='EXIT_INPUT_SIDE')){
+                        conflict = true;
                     }
                 }
-                if(my_tx===CHARGE_ENTRY_NODE.x){
-                    if(Math.abs(o.pos.x-CHARGE_ENTRY_X)<50&&o.pos.y>DOCKING_Y+10){
-                        if(o.state==='ENTERING_BAY'||o.state==='TO_CHARGE_DOCK') conflict=true;
-                    }
+                if(my_tx===CHARGE_ENTRY_NODE.x && this.state === 'TO_CHARGE_DOCK'){
+                    if(o.state==='ENTERING_BAY'||o.state==='TO_CHARGE_DOCK'||o.state==='EXITING_BAY') conflict=true;
                 }
                 if(!conflict){
                     let myL = (dual_lane && this.payload>0) ? OUTPUT_LANE_Y : AMR_LANE_Y;
@@ -1007,6 +1010,9 @@ case 'TO_CHARGE_DOCK': {
 
             case 'ENTERING_INPUT': {
                 let targetY = getIO('IN',this.current_io_model).y - 55;
+                let dir = Math.sign(targetY - this.pos.y);
+                let ahead = amrs.find(o => o.id !== this.id && o.state === 'ENTERING_INPUT' && Math.sign(o.pos.y - this.pos.y) === dir && Math.abs(o.pos.y - this.pos.y) < 60);
+                if (ahead) return;
                 if(this.moveTowards(getIO('IN',this.current_io_model).entryX, targetY, step)){
                     this.state = 'AT_INPUT'; this.wait_timer = 0;
                 }
@@ -1021,6 +1027,9 @@ case 'TO_CHARGE_DOCK': {
                 break;
 
             case 'TO_INPUT_LANE_UP':
+                let dirUp = Math.sign(AMR_LANE_Y - this.pos.y);
+                let aheadUp = amrs.find(o => o.id !== this.id && o.state === 'TO_INPUT_LANE_UP' && Math.sign(o.pos.y - this.pos.y) === dirUp && Math.abs(o.pos.y - this.pos.y) < 60);
+                if (aheadUp) return;
                 if(this.moveTowards(getIO('IN',this.current_io_model).exitX, AMR_LANE_Y, step)){
                     this.state='MOVING_ON_LANE';
                     if (this.next_state === 'TO_CHARGE_DOCK') {
@@ -1117,6 +1126,9 @@ case 'TO_CHARGE_DOCK': {
                 break;
 
             case 'MOVING_ON_VERTICAL_FOR_OUTPUT':
+                let dir = Math.sign(getIO('OUT',this.current_io_model).entryY - this.pos.y);
+                let aheadUp = amrs.find(o => o.id !== this.id && o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' && Math.sign(o.pos.y - this.pos.y) === dir && Math.abs(o.pos.y - this.pos.y) < 60);
+                if (aheadUp) return;
                 if(this.moveTowards(VERTICAL_LANE_X, getIO('OUT',this.current_io_model).entryY, step)){
                     this.state='TO_OUTPUT_DOCK';
                 }
@@ -1142,7 +1154,11 @@ case 'TO_CHARGE_DOCK': {
             case 'MOVE_TO_EXIT_Y_AT_DOCK':
                 // Y축(상하)으로만 먼저 이동하여 exitY 에 도달
                 if(this.moveTowards(this.pos.x, getIO('OUT',this.current_io_model).exitY, step)){
-                    this.state='EXIT_OUTPUT_SIDE';
+                    // VERTICAL_LANE_X 에 올라오는(TO_OUTPUT_LANE_UP) 차가 없을 때만 진입
+                    let incoming = amrs.some(o => o.id !== this.id && o.state === 'TO_OUTPUT_LANE_UP');
+                    if(!incoming) {
+                        this.state='EXIT_OUTPUT_SIDE';
+                    }
                 }
                 break;
 
@@ -1154,6 +1170,9 @@ case 'TO_CHARGE_DOCK': {
                 break;
 
             case 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT':
+                let dirDown = Math.sign(AMR_LANE_Y - this.pos.y);
+                let aheadDown = amrs.find(o => o.id !== this.id && o.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT' && Math.sign(o.pos.y - this.pos.y) === dirDown && Math.abs(o.pos.y - this.pos.y) < 60);
+                if (aheadDown) return;
                 if(this.moveTowards(VERTICAL_LANE_X, AMR_LANE_Y, step)){
                     this.state='FROM_OUTPUT_DOCK';
                 }
