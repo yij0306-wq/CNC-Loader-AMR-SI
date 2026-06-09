@@ -108,9 +108,9 @@ const COLOR_PED_LANE = '#e2e8f0';
 const COLOR_AMR = ['#2563eb','#10b981','#8b5cf6','#eab308'];
 
 const MODELS = [
-    {name:'M3 5X',  ct:150},
-    {name:'M3 UPPER',ct:150},
-    {name:'M3 2ND', ct:125},
+    {name:'M3 5X',  ct:125},
+    {name:'M3 UPPER',ct:125},
+    {name:'M3 2ND', ct:105},
     {name:'Min', ct:75}
 ];
 
@@ -535,6 +535,9 @@ class Loader {
         }
         
         // CNC 설비 이미지 (좌/우 약 65x55px)
+        let isRunning = (this.status !== 'IDLE');
+        let loaderGlow = isRunning ? (Math.abs(Math.sin(Date.now()/150)) * 15 + 5) : 0;
+        
         if (cncImg && cncImg.complete && cncImg.naturalWidth > 0) {
             ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
             ctx.drawImage(cncImg, this.x+17, this.y-25, 65, 55);
@@ -549,7 +552,9 @@ class Loader {
         // 75px 높이, 34px 폭(860mm) 로더 본체
         let g=ctx.createLinearGradient(this.x-17,this.y-25,this.x+17,this.y+50);
         g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#e2e8f0');
-        ctx.shadowColor='rgba(0,0,0,0.2)'; ctx.shadowBlur=10; ctx.fillStyle=g;
+        if(isRunning) { ctx.shadowColor='#22c55e'; ctx.shadowBlur=loaderGlow; }
+        else { ctx.shadowColor='rgba(0,0,0,0.2)'; ctx.shadowBlur=10; }
+        ctx.fillStyle=g;
         ctx.beginPath(); ctx.roundRect(this.x-17,this.y-25,34,75,4); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.stroke();
         
@@ -563,7 +568,11 @@ class Loader {
         else if (this.trays === this.targetTrays - 2) led = '#22c55e';
         else if(this.status==='IDLE') led='#94a3b8';
         
+        if (this.status === 'RUNNING' || this.status === 'CALLING' || this.status === 'DONE') {
+            ctx.shadowColor = led; ctx.shadowBlur = (Math.abs(Math.sin(Date.now()/150)) * 15 + 8);
+        }
         ctx.fillStyle=led; ctx.fillRect(this.x-8,this.y-17,16,8);
+        ctx.shadowBlur = 0;
         
         // 트레이 수납부 (크기 조정)
         ctx.fillStyle='#f1f5f9'; ctx.fillRect(this.x-14,this.y+5,28,40);
@@ -1269,8 +1278,19 @@ case 'TO_CHARGE_DOCK': {
 
         // ★ [CorrSpeed] 중앙통로 1배속 제한 중인 AMR 테두리 강조
         const corrLimited = isCorrSpeedLimited(this);
-        ctx.shadowColor = corrLimited ? 'rgba(6,182,212,0.6)' : 'rgba(0,0,0,0.3)';
-        ctx.shadowBlur = corrLimited ? 14 : 8;
+        let isMoving = this.state !== 'WAITING_INPUT' && this.state !== 'CHARGING' && this.state !== 'EVADING_WAIT';
+        let glowAmp = isMoving ? (Math.abs(Math.sin(Date.now()/100)) * 25 + 10) : 0;
+        
+        if (corrLimited) {
+            ctx.shadowColor = 'rgba(6,182,212,0.6)';
+            ctx.shadowBlur = 14;
+        } else if (isMoving) {
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = glowAmp;
+        } else {
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 8;
+        }
 
         let g=ctx.createLinearGradient(-25,-10,25,10);
         g.addColorStop(0,'#f8fafc'); g.addColorStop(1,'#cbd5e1');
@@ -1320,6 +1340,13 @@ case 'TO_CHARGE_DOCK': {
             ctx.fillStyle = '#ffffff'; ctx.font = '800 8px Inter';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText('1x', 0, -17);
+        }
+
+        if (this.state === 'CHARGING') {
+            ctx.fillStyle = '#facc15';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('⚡', 0, -28);
         }
 
         ctx.restore();
@@ -1688,11 +1715,13 @@ function draw(){
     ctx.fillStyle='#64748b'; ctx.font='800 14px Inter'; ctx.textAlign='left';
     ctx.fillText('보행자',20,dynamic_ped_lane_y+5);
 
+    let dashOffset = -(Date.now() / 30) % 100;
+
     // 배출(OUTPUT) 2라인 표시
     if(dual_lane){
         ctx.fillStyle='rgba(59,130,246,0.1)'; ctx.fillRect(0,OUTPUT_LANE_Y-15,WIDTH,30);
         ctx.beginPath(); ctx.moveTo(0,OUTPUT_LANE_Y); ctx.lineTo(WIDTH,OUTPUT_LANE_Y);
-        ctx.strokeStyle='#3b82f6'; ctx.lineWidth=2; ctx.setLineDash([8,4]); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle='#3b82f6'; ctx.lineWidth=2; ctx.setLineDash([8,4]); ctx.lineDashOffset = dashOffset; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
         ctx.fillStyle='#3b82f6'; ctx.font='800 12px Inter'; ctx.textAlign='left';
         ctx.fillText('배출 경로 (2라인)',20,OUTPUT_LANE_Y+12);
     }
@@ -1702,7 +1731,7 @@ function draw(){
     let lh=dual_lane?(OUTPUT_LANE_Y-AMR_LANE_Y+29):28; // 폭 700mm = 28px
     ctx.fillRect(0,AMR_LANE_Y-14,VERTICAL_LANE_X+14,lh);
     ctx.beginPath(); ctx.moveTo(0,AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X+14,AMR_LANE_Y);
-    ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2; ctx.setLineDash([15,10]); ctx.lineDashOffset = dashOffset; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
     ctx.fillStyle=COLOR_AMR_LINE; ctx.font='800 12px Inter'; ctx.textAlign='left';
     ctx.fillText(dual_lane?'투입 경로 (1라인)':'AMR',20,AMR_LANE_Y-18);
 
@@ -1718,8 +1747,8 @@ function draw(){
         let laneY = isTop ? TOP_AMR_LANE_Y : AMR_LANE_Y;
         let dockY = isTop ? TOP_DOCKING_Y : DOCKING_Y;
         let sign = isTop ? -1 : 1;
-        ctx.strokeStyle='rgba(234,88,12,0.4)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(x,laneY); ctx.lineTo(x,dockY); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle='rgba(234,88,12,0.4)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
+        ctx.beginPath(); ctx.moveTo(x,laneY); ctx.lineTo(x,dockY); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
         ctx.beginPath();
         ctx.moveTo(x-30,laneY - 10*sign); ctx.lineTo(x-30,dockY - 20*sign);
         ctx.lineTo(x+30,dockY - 20*sign); ctx.lineTo(x+30,laneY - 10*sign); ctx.stroke();
@@ -1729,8 +1758,9 @@ function draw(){
     // Draw TOP AMR LANE and VERTICAL LANE
     ctx.fillStyle=COLOR_AMR_LANE; ctx.fillRect(0, TOP_AMR_LANE_Y-14, VERTICAL_LANE_X+14, 28);
     ctx.fillRect(VERTICAL_LANE_X-14, TOP_AMR_LANE_Y-14, 28, AMR_LANE_Y-TOP_AMR_LANE_Y+28);
-    ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2;
+    ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2; ctx.setLineDash([15,10]); ctx.lineDashOffset = dashOffset;
     ctx.beginPath(); ctx.moveTo(0, TOP_AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X, TOP_AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X, AMR_LANE_Y); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
 
     // 추가 회피존 도킹 라인 표시 (SIDING)
     extra_sidings.forEach(s=>{
@@ -1749,10 +1779,10 @@ function draw(){
         let iLaneY=dual_lane?OUTPUT_LANE_Y:AMR_LANE_Y;
         let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
         
-        ctx.strokeStyle='rgba(234,88,12,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(iEntX,iLaneY); ctx.lineTo(iEntX,iy-45); ctx.stroke(); ctx.setLineDash([]);
-        ctx.strokeStyle='rgba(16,185,129,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(iExX,iLaneY); ctx.lineTo(iExX,iy-45); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle='rgba(234,88,12,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
+        ctx.beginPath(); ctx.moveTo(iEntX,iLaneY); ctx.lineTo(iEntX,iy-45); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+        ctx.strokeStyle='rgba(16,185,129,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
+        ctx.beginPath(); ctx.moveTo(iExX,iLaneY); ctx.lineTo(iExX,iy-45); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
         ctx.strokeStyle='rgba(234,88,12,0.4)'; ctx.lineWidth=2;
         ctx.beginPath();
         ctx.moveTo(iExX-10,iLaneY+10); ctx.lineTo(iExX-10,iy-45);
@@ -1763,7 +1793,12 @@ function draw(){
         ctx.fillStyle='rgba(16,185,129,0.9)';
         ctx.fillText('▲출차',iExX,iLaneY+14);
         
-        ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
+        let isDocking = amrs.some(a => a.pos.x >= iExX - 5 && a.pos.x <= iEntX + 5 && a.pos.y > AMR_LANE_Y + 10);
+        if(isDocking) {
+            ctx.shadowColor = 'rgba(16,185,129,1)'; ctx.shadowBlur = (Math.abs(Math.sin(Date.now()/100)) * 20 + 10);
+        } else {
+            ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
+        }
         ctx.fillStyle='#fde68a';
         ctx.beginPath(); ctx.roundRect(iExX-15,iy-45,iEntX-iExX+30,90,12); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#334155'; ctx.lineWidth=2; ctx.stroke();
@@ -1772,10 +1807,10 @@ function draw(){
     });
 // ===== CHARGE 전용 라인 및 베이 (4칸) =====
     let cExX = CHARGE_EXIT_X, cEntX = CHARGE_ENTRY_X;
-    ctx.strokeStyle='rgba(16,185,129,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
+    ctx.strokeStyle='rgba(16,185,129,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
     ctx.beginPath(); ctx.moveTo(cExX, AMR_LANE_Y); ctx.lineTo(cExX, 700); ctx.stroke();
     ctx.strokeStyle='rgba(234,88,12,0.6)';
-    ctx.beginPath(); ctx.moveTo(cEntX, AMR_LANE_Y); ctx.lineTo(cEntX, 700); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(cEntX, AMR_LANE_Y); ctx.lineTo(cEntX, 700); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
     ctx.fillStyle='rgba(16,185,129,0.9)'; ctx.font='bold 10px Inter'; ctx.textAlign='center';
     ctx.fillText('▲출차', cExX, AMR_LANE_Y+14);
     ctx.fillStyle='rgba(234,88,12,0.9)';
@@ -1806,10 +1841,10 @@ function draw(){
         let ox=zone.x, oEntY=zone.entryY, oExY=zone.exitY;
         let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
 
-        ctx.strokeStyle='rgba(59,130,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oEntY); ctx.lineTo(ox-30,oEntY); ctx.stroke(); ctx.setLineDash([]);
-        ctx.strokeStyle='rgba(139,92,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oExY); ctx.lineTo(ox-30,oExY); ctx.stroke(); ctx.setLineDash([]);
+        ctx.strokeStyle='rgba(59,130,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
+        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oEntY); ctx.lineTo(ox-30,oEntY); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
+        ctx.strokeStyle='rgba(139,92,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
+        ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oExY); ctx.lineTo(ox-30,oExY); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
         
         ctx.strokeStyle='rgba(59,130,246,0.4)'; ctx.lineWidth=2;
         ctx.beginPath();
@@ -1821,7 +1856,12 @@ function draw(){
         ctx.fillStyle='rgba(139,92,246,0.9)';
         ctx.fillText('◀출차', VERTICAL_LANE_X+15, oExY-4);
         
-        ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
+        let isDocking = amrs.some(a => (a.state === 'UNLOADING' || a.state === 'TO_OUTPUT_DOCK') && Math.abs(a.pos.y - oEntY) < 20);
+        if(isDocking) {
+            ctx.shadowColor = 'rgba(139,92,246,1)'; ctx.shadowBlur = (Math.abs(Math.sin(Date.now()/100)) * 20 + 10);
+        } else {
+            ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
+        }
         ctx.fillStyle='#bfdbfe';
         ctx.beginPath(); ctx.roundRect(ox-10, oEntY-15, 90, oExY-oEntY+30, 12); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#334155'; ctx.lineWidth=2; ctx.stroke();
