@@ -1788,7 +1788,7 @@ function draw(){
         ctx.fillStyle='rgba(16,185,129,0.9)';
         ctx.fillText('▲출차',iExX,iLaneY+14);
         
-        let isDocking = amrs.some(a => a.pos.x >= iExX - 5 && a.pos.x <= iEntX + 5 && a.pos.y > AMR_LANE_Y + 10);
+        let isDocking = amrs.some(a => a.pos.x >= iExX - 5 && a.pos.x <= iEntX + 5 && a.pos.y > AMR_LANE_Y + 10 && !['TO_CHARGE_DOCK','ENTERING_BAY','CHARGING','EXITING_BAY','FROM_CHARGE_DOCK'].includes(a.state));
         if(isDocking) {
             ctx.shadowColor = 'rgba(16,185,129,1)'; ctx.shadowBlur = (Math.abs(Math.sin(Date.now()/100)) * 20 + 10);
         } else {
