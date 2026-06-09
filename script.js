@@ -122,38 +122,26 @@ let time_scale = 1; // [변경] 초기 1배속
 let is_paused = true;
 let stats = { calls: 0, totalWait: 0 };
 let evade_detect_range = 120;
+// ★ [EvasionWatch] 회피 관찰 1배속 제한 기능
+let evasion_watch_active = false;
+const CORR_LANE_THRESHOLD = 25; // 중앙통로(AMR_LANE_Y, TOP_AMR_LANE_Y, VERTICAL_LANE_X) ±px 범위를 중앙통로로 판단
 
-// ★ [CorrSpeed] 중앙통로 1배속 제한 기능
-// corr_speed_amr_count: 0이면 비활성, 1~4이면 해당 수 이하 id의 AMR이 중앙통로 진입 시 1배속 적용
-let corr_speed_amr_count = 0; // 0 = 비활성화
-const CORR_LANE_THRESHOLD = 25; // 중앙통로(AMR_LANE_Y) ±px 범위를 중앙통로로 판단
-
-// AMR이 중앙통로를 이동 중인지 판단하는 함수
+// AMR이 중앙통로/수직통로를 이동 중인지 판단하는 함수
 function isInCorridor(amr) {
-    // Y좌표가 AMR_LANE_Y 근처(중앙통로) AND 수직 이동 상태가 아닌 경우
-    const onLane = Math.abs(amr.pos.y - AMR_LANE_Y) <= CORR_LANE_THRESHOLD;
-    // 수직 이동(도킹/언도킹) 중인 상태는 중앙통로 이동이 아님
-    const verticalStates = ['TO_CHARGE_DOCK','FROM_CHARGE_DOCK','ENTERING_BAY','EXITING_BAY',
-        'ENTERING_INPUT','EXIT_INPUT_SIDE','TO_INPUT_LANE_UP','DOCKING_IN','DOCKING_OUT',
-        'TO_OUTPUT_DOCK','EXIT_OUTPUT_SIDE','FROM_OUTPUT_DOCK','EVADING_UP','EVADING_DOWN'];
-    const isVertical = verticalStates.includes(amr.state);
-    return onLane && !isVertical;
+    const onMainLane = Math.abs(amr.pos.y - AMR_LANE_Y) <= CORR_LANE_THRESHOLD;
+    const onTopLane = Math.abs(amr.pos.y - TOP_AMR_LANE_Y) <= CORR_LANE_THRESHOLD;
+    const onVertical = Math.abs(amr.pos.x - VERTICAL_LANE_X) <= CORR_LANE_THRESHOLD;
+    const onSiding = Math.abs(amr.pos.y - DOCKING_Y) <= CORR_LANE_THRESHOLD;
+    return onMainLane || onTopLane || onVertical || onSiding;
 }
 
-// AMR에 중앙통로 속도제한이 적용되는지 판단
-function isCorrSpeedLimited(amr) {
-    if (corr_speed_amr_count <= 0) return false; // 비활성
-    if (amr.id >= corr_speed_amr_count) return false; // 대상 AMR 수 초과
-    return isInCorridor(amr);
-}
-
-// 중앙통로 속도제한 UI 뱃지 업데이트
+// 회피 관찰 1배속 UI 뱃지 업데이트
 function updateCorrSpeedBadge() {
     const badge = document.getElementById('corr-speed-status');
     const group = document.getElementById('corrSpeedGroup');
     if (!badge || !group) return;
-    if (corr_speed_amr_count > 0) {
-        badge.textContent = `ON (AMR ${corr_speed_amr_count}대)`;
+    if (evasion_watch_active) {
+        badge.textContent = 'ON';
         badge.className = 'corr-speed-badge corr-speed-on';
         group.classList.add('active-limit');
     } else {
@@ -161,6 +149,21 @@ function updateCorrSpeedBadge() {
         badge.className = 'corr-speed-badge corr-speed-off';
         group.classList.remove('active-limit');
     }
+}
+
+// 회피 관찰(자동 1배속)용 근접 감지 함수 (반경 300px 이내 접근 시)
+function isEvasionProximity() {
+    let corridorAMRs = amrs.filter(a => isInCorridor(a));
+    for (let i = 0; i < corridorAMRs.length; i++) {
+        for (let j = i + 1; j < corridorAMRs.length; j++) {
+            let dx = corridorAMRs[i].pos.x - corridorAMRs[j].pos.x;
+            let dy = corridorAMRs[i].pos.y - corridorAMRs[j].pos.y;
+            if (Math.abs(dx) < 300 && Math.abs(dy) < 300) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // V35 핵심 로직: 배출칸수-1칸(CALLING) 및 배출칸수(DONE) 상태 로더가 후보
@@ -1657,10 +1660,8 @@ function init(){
 }
 
 function update(dt){
-    // ★ [CorrSpeed] 중앙통로에 있는 지정 AMR 수가 설정값과 일치할 때만 1배속 조건 성립
-    // 예) 2대 설정 → AMR#1과 AMR#2가 동시에 중앙통로에 있어야 1배속 적용
-    const corrInCount = amrs.filter(a => a.id < corr_speed_amr_count && isInCorridor(a)).length;
-    const corrActive = corr_speed_amr_count > 0 && corrInCount >= corr_speed_amr_count;
+    // ★ [EvasionWatch] 회피 관찰 1배속: 활성화되어 있고 통로 내 AMR이 근접한 경우 1배속 적용
+    const corrActive = evasion_watch_active && isEvasionProximity();
 
     // corrActive=true 이면 sim_dt=dt(1배속), false 이면 설정 배속 그대로
     let total_sim_dt = corrActive ? dt : dt * manager.speed;
@@ -1945,20 +1946,9 @@ document.getElementById('select-target-time').addEventListener('change', e => {
     manager.targetHours = parseInt(e.target.value);
 });
 
-// ★ [CorrSpeed] 중앙통로 1배속 AMR 수 설정 리스너
-document.getElementById('input-corr-amr-count').addEventListener('change', e => {
-    let val = parseInt(e.target.value);
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 4) val = 4;
-    corr_speed_amr_count = val;
-    e.target.value = val;
-    updateCorrSpeedBadge();
-});
-document.getElementById('input-corr-amr-count').addEventListener('input', e => {
-    let val = parseInt(e.target.value);
-    if (isNaN(val) || val < 0) val = 0;
-    if (val > 4) val = 4;
-    corr_speed_amr_count = val;
+// ★ [EvasionWatch] 회피 관찰 1배속 설정 리스너
+document.getElementById('checkbox-evasion-watch').addEventListener('change', e => {
+    evasion_watch_active = e.target.checked;
     updateCorrSpeedBadge();
 });
 
