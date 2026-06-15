@@ -902,6 +902,15 @@ class AMR {
                     if (myIntended !== oIntended) {
                         if (oDist < 2 && myDist >= 2) return true; // 상대가 진입했으면 내가 양보
                         if (myDist < 2 && oDist >= 2) return false; // 내가 진입했으면 내가 우선
+                        
+                        // [BUGFIX] 교착(Deadlock) 방지: 한 대는 큐잉 대기선(60px)에 있고 다른 한 대는 교차로에 가까울 때(예: 출차 중)
+                        if (myDist < 30 && oDist >= 50) return false; // 내가 진출입구에 더 가깝고 상대가 대기선이면 내가 우선
+                        if (oDist < 30 && myDist >= 50) return true;  // 상대가 진출입구에 더 가깝고 내가 대기선이면 양보
+
+                        // [NEW] 출차 우선권 (Exiting Priority): 메인 통로로 나오는 방향(DOWN)이 들어가는 방향(UP)보다 무조건 우선
+                        if (myIntended === 'DOWN' && oIntended === 'UP') return false; 
+                        if (myIntended === 'UP' && oIntended === 'DOWN') return true;
+
                         return o.id < this.id; // 둘 다 진입 전이거나 동시에 진입한 경우 ID 우선순위
                     } 
                     // 같은 방향인 경우 (후미 추돌 방지)
@@ -1037,7 +1046,7 @@ case 'TO_CHARGE_DOCK': {
                 if (this.target_x === VERTICAL_LANE_X && this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') {
                     let occupied = amrs.some(o => o.id !== this.id && (
                         (o.current_io_model === this.current_io_model && (o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || o.state === 'TO_OUTPUT_DOCK' || o.state === 'UNLOADING' || o.state === 'MOVE_TO_EXIT_Y_AT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE')) ||
-                        o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE'
+                        o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE' || o.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'
                     ));
                     if (occupied) actual_target_x = VERTICAL_LANE_X - 60;
                 }
@@ -1227,7 +1236,7 @@ case 'TO_CHARGE_DOCK': {
 
             case 'EVADING_WAIT':{
                 this.wait_timer += sim_dt;
-                if(this.wait_timer < 14) return; // 14초 지연 대기
+                if(this.wait_timer < 3) return; // 3초 지연 대기 (상대 통과 후 빠른 복귀)
 
                 let stx=this.saved_target_x;
                 let still=amrs.some(a=>{
