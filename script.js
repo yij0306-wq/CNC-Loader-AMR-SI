@@ -15,6 +15,7 @@ const PED_LANE_Y = 504; // 보행자 통로 간격 1000mm (39px) -> 440 + 39 + 2
 const EXCLUSION_BUFFER = 200;
 
 // U-Shape Layout Constants
+const WAIT_OUTPUT_TOP_Y = 242; // 배출 대기 AMR 상단 위치 (로더 2열과 동일한 라인)
 const TOP_AMR_LANE_Y = 155; // AMR_LANE_Y(440) - 285px (7.3m * 39px/m)
 const TOP_DOCKING_Y = 180; // TOP_AMR_LANE_Y(155) + 25px(650mm)
 const VERTICAL_LANE_X = 2300;
@@ -29,13 +30,57 @@ const PX_PER_M         = CORRIDOR_PX / CORRIDOR_M; // 38.99 px/m
 const INPUT_Y = 678; // AMR_LANE_Y(440) + 238(6m)
 const OUTPUT_Y = 202; // AMR_LANE_Y(440) - 238(6m)
 
-// MULTI INPUT ZONES (원래 위치로 복구)
-const INPUT_ZONES = {
-    'M3 5X':    { entryX: 1697, exitX: 1667, y: INPUT_Y },
-    'M3 UPPER': { entryX: 1757, exitX: 1727, y: INPUT_Y },
-    'M3 2ND':   { entryX: 1817, exitX: 1787, y: INPUT_Y },
-    'Min':      { entryX: 1877, exitX: 1847, y: INPUT_Y }
-};
+// ===== 동적 기종 관리 (Model Management) =====
+const DEFAULT_MODELS = [
+    {name:'M3 5X',  ct:250},
+    {name:'M3 UPPER',ct:250},
+    {name:'M3 2ND', ct:210},
+    {name:'Min', ct:150}
+];
+
+let MODELS = [];
+try {
+    const saved = localStorage.getItem('amr_models_v51_cnc');
+    if (saved) MODELS = JSON.parse(saved);
+    else MODELS = JSON.parse(JSON.stringify(DEFAULT_MODELS));
+} catch(e) {
+    MODELS = JSON.parse(JSON.stringify(DEFAULT_MODELS));
+}
+
+function saveModels() {
+    localStorage.setItem('amr_models_v51_cnc', JSON.stringify(MODELS));
+}
+
+// MULTI INPUT / OUTPUT ZONES 동적 할당
+let INPUT_ZONES = {};
+let OUTPUT_ZONES = {};
+const IO_X = 2450;
+
+function updateIOZones() {
+    INPUT_ZONES = {};
+    OUTPUT_ZONES = {};
+    const numLines = Math.min(2, Math.ceil(MODELS.length / 3)); // 1라인당 3모델, 최대 2라인
+    
+    // IN zones: 우측 충전베이(1910)에 간섭하지 않도록 좌측으로 배치
+    // 라인 간격 60px.
+    let startInX = 1850 - (numLines - 1) * 60;
+    
+    // OUT zones: 우측 통로 사이의 정중앙 배치 (1라인 고정)
+    let centerTotal = (TOP_AMR_LANE_Y + AMR_LANE_Y) / 2; // 297.5
+    let startOutY = centerTotal - 15; // 30px 높이 박스의 중앙 정렬
+
+    MODELS.forEach((m, idx) => {
+        let lineIdx = Math.floor(idx / 3);
+        if (lineIdx >= 2) lineIdx = 1; // 최대 2라인 제한
+
+        let inX = startInX + lineIdx * 60;
+        INPUT_ZONES[m.name] = { entryX: inX, exitX: inX - 30, y: INPUT_Y, lineIdx: lineIdx };
+        
+        // 배출 컨베이어는 단일 라인으로 통합
+        OUTPUT_ZONES[m.name] = { entryY: startOutY, exitY: startOutY + 30, x: IO_X, lineIdx: 0 };
+    });
+}
+updateIOZones();
 
 // CHARGE (오른쪽 전용 라인 및 베이)
 const CHARGE_EXIT_X = 1880; // 출차 라인 (왼쪽)
@@ -44,17 +89,8 @@ const CHARGE_BAY_X = 1980;   // 베이 X좌표
 const CHARGE_EXIT_NODE = {x: CHARGE_EXIT_X, y: AMR_LANE_Y};
 const CHARGE_ENTRY_NODE = {x: CHARGE_ENTRY_X, y: AMR_LANE_Y};
 
-// MULTI OUTPUT ZONES (우측 수직 통로에 회전 배치)
-const IO_X = 2450;
-const OUTPUT_ZONES = {
-    'M3 5X':    { entryY: 200, exitY: 230, x: IO_X },
-    'M3 UPPER': { entryY: 260, exitY: 290, x: IO_X },
-    'M3 2ND':   { entryY: 320, exitY: 350, x: IO_X },
-    'Min':      { entryY: 380, exitY: 410, x: IO_X }
-};
-
 function getIO(type, model) {
-    if(!model) model = 'M3 5X';
+    if(!model) model = MODELS[0].name;
     return type === 'IN' ? INPUT_ZONES[model] : OUTPUT_ZONES[model];
 }
 
@@ -107,14 +143,8 @@ const COLOR_AMR_LINE = '#ea580c';
 const COLOR_PED_LANE = '#e2e8f0';
 const COLOR_AMR = ['#2563eb','#10b981','#8b5cf6','#eab308'];
 
-const MODELS = [
-    {name:'M3 5X',  ct:125},
-    {name:'M3 UPPER',ct:125},
-    {name:'M3 2ND', ct:105},
-    {name:'Min', ct:75}
-];
-
-let global_production = {'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
+let global_production = {};
+MODELS.forEach(m => global_production[m.name] = 0);
 let priority_mode = 'LOADED_YIELDS';
 let eject_threshold = 8;
 let use_pre_eject = false; // [변경] 초기값 비활성화
@@ -275,13 +305,13 @@ function runAnalysis(sim_dt) {
             const m = Math.floor((a.battery % 3600) / 60);
             
             let statusText = "";
-            if (a.state === 'CHARGING') statusText = " (충전중)";
-            else if (a.state === 'TO_CHARGE_DOCK' || a.state === 'ENTERING_BAY') statusText = " (충전이동)";
+            if (a.state === 'CHARGING') statusText = " (" + t('cvs_charging') + ")";
+            else if (a.state === 'TO_CHARGE_DOCK' || a.state === 'ENTERING_BAY') statusText = " (" + t('cvs_moving') + ")";
             
             text.style.color = '#475569';
             text.style.fontWeight = 'normal';
             if (a.battery <= 0) {
-                statusText = " (방전! 강제충전)";
+                statusText = " (" + t('cvs_waiting') + ")";
                 text.style.color = '#ef4444';
                 text.style.fontWeight = 'bold';
                 bar.style.backgroundColor = '#ef4444';
@@ -329,10 +359,11 @@ class SimulationManager {
             this.rewind();
         }
 
-        document.getElementById('prod-m3-5x').innerText   = global_production['M3 5X'].toLocaleString();
-        document.getElementById('prod-m3-upper').innerText = global_production['M3 UPPER'].toLocaleString();
-        document.getElementById('prod-m3-2nd').innerText  = global_production['M3 2ND'].toLocaleString();
-        if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText  = global_production['Min'].toLocaleString();
+        MODELS.forEach(m => {
+            let safeId = 'prod-' + m.name.replace(/[^a-zA-Z0-9]/g, '');
+            let el = document.getElementById(safeId);
+            if(el) el.innerText = (global_production[m.name] || 0).toLocaleString();
+        });
     }
 
     captureState() {
@@ -376,9 +407,11 @@ class SimulationManager {
         this.global_time = st.gt;
         stats.calls = st.stats.calls;
         stats.totalWait = st.stats.totalWait;
-        global_production['M3 5X'] = st.prod['M3 5X'];
-        global_production['M3 UPPER'] = st.prod['M3 UPPER'];
-        global_production['M3 2ND'] = st.prod['M3 2ND'];
+        MODELS.forEach(m => {
+            if (st.prod[m.name] !== undefined) {
+                global_production[m.name] = st.prod[m.name];
+            }
+        });
 
         st.ldrs.forEach((ls, i) => {
             let l = ldrs[i];
@@ -418,7 +451,7 @@ class Loader {
         this.startTrays = 1; 
         this.preEjectTrays = 7; // [변경] 사전 배출 칸수 기본값 7
         this.active = true;
-        this.cycleTime = this.model.ct;
+        this.cycleTime = this.model.ct / 2; // [신규 로직] CNC C/T의 절반을 로더 사이클타임으로 적용
         this.done_timestamp = 0;
         this.cumulative_wait = 0;
         this.wait_history = []; // [NEW] 대기 히스토리 기록
@@ -539,7 +572,11 @@ class Loader {
         
         // CNC 설비 이미지 (좌/우 약 65x55px)
         let isRunning = (this.status !== 'IDLE');
-        let loaderGlow = isRunning ? (Math.abs(Math.sin(Date.now()/150)) * 15 + 5) : 0;
+        let currentP = (this.status === 'DONE') ? (this.targetTrays * this.pieces_per_tray) : ((this.trays - 1) * this.pieces_per_tray + this.pieces);
+        
+        // 라이트닝 효과: 생산수 42개 미만일 때는 전혀 없음. 42개 이상일 때 강하게 발광.
+        let isLightning = (isRunning && currentP >= 42);
+        let loaderGlow = isLightning ? (Math.abs(Math.sin(Date.now()/100)) * 25 + 10) : 0;
         
         if (cncImg && cncImg.complete && cncImg.naturalWidth > 0) {
             ctx.drawImage(cncImg, this.x-17-65, this.y-25, 65, 55);
@@ -555,7 +592,7 @@ class Loader {
         // 75px 높이, 34px 폭(860mm) 로더 본체
         let g=ctx.createLinearGradient(this.x-17,this.y-25,this.x+17,this.y+50);
         g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#e2e8f0');
-        if(isRunning) { ctx.shadowColor='#22c55e'; ctx.shadowBlur=loaderGlow; }
+        if(isLightning) { ctx.shadowColor='#eab308'; ctx.shadowBlur=loaderGlow; } // 노란색 라이트닝 효과
         else { ctx.shadowColor='rgba(0,0,0,0.2)'; ctx.shadowBlur=10; }
         ctx.fillStyle=g;
         ctx.beginPath(); ctx.roundRect(this.x-17,this.y-25,34,75,4); ctx.fill();
@@ -571,7 +608,8 @@ class Loader {
         else if (this.trays === this.targetTrays - 2) led = '#22c55e';
         else if(this.status==='IDLE') led='#94a3b8';
         
-        if (this.status === 'RUNNING' || this.status === 'CALLING' || this.status === 'DONE') {
+        // 로더 라이트닝(LED 발광) 효과 (42개 이상일 때만)
+        if (isLightning) {
             ctx.shadowColor = led; ctx.shadowBlur = (Math.abs(Math.sin(Date.now()/150)) * 15 + 8);
         }
         ctx.fillStyle=led; ctx.fillRect(this.x-8,this.y-17,16,8);
@@ -615,15 +653,14 @@ class Loader {
         ctx.fillStyle='#475569'; ctx.font='bold 10px Inter';
         ctx.fillText('('+this.trays+'/'+this.targetTrays+'T)',this.x, textY3);
         ctx.fillStyle='#10b981'; ctx.font='bold 11px Inter';
-        let currentP = (this.status === 'DONE') ? (this.targetTrays * this.pieces_per_tray) : ((this.trays - 1) * this.pieces_per_tray + this.pieces);
         let targetP = this.targetTrays * this.pieces_per_tray;
         // [변경] 누적 생산수가 아닌 현재 배치(트레이) 기준의 제품수를 표시 (48개 완료 시 0부터 재시작)
         let bufferText = this.buffer_pieces > 0 ? ` (+${this.buffer_pieces})` : '';
-        ctx.fillText('생산: '+Math.max(0, currentP).toLocaleString()+'개' + bufferText, this.x, textY4);
+        ctx.fillText(t('cvs_prod') + Math.max(0, currentP).toLocaleString() + bufferText, this.x, textY4);
 
         if (this.cumulative_wait > 0) {
             ctx.fillStyle = '#ef4444'; ctx.font = '800 12px Inter';
-            ctx.fillText('대기: ' + formatTime(this.cumulative_wait), this.x, textYWait);
+            ctx.fillText(t('cvs_idle') + formatTime(this.cumulative_wait), this.x, textYWait);
         }
     }
 }
@@ -815,9 +852,12 @@ class AMR {
                     if (o.pos.y > AMR_LANE_Y + 10) return false;
                 }
                 
+                let my_charging = (my_tx === CHARGE_ENTRY_NODE.x);
                 let otx=(o.state==='EVADING_TO_X')?o.evade_target:o.target_x;
                 if(o.state==='REVERSING_FROM_INPUT_DOCK') otx=getIO('IN',o.current_io_model).exitX;
-                if(o.state==='REVERSING_FROM_OUTPUT_DOCK') otx=getIO('OUT',o.current_io_model).exitX;
+                if(o.state==='REVERSING_FROM_OUTPUT_DOCK') otx=VERTICAL_LANE_X;
+                if(o.state==='FROM_OUTPUT_DOCK') otx=0;
+                if(o.state==='TO_MAIN_LANE_DOWN' || o.state==='MOVING_ON_VERTICAL_FOR_OUTPUT') otx=VERTICAL_LANE_X;
                 if(o.state==='FROM_CHARGE_DOCK') otx=CHARGE_EXIT_NODE.x;
                 let conflict=false;
                 if(!conflict){
@@ -828,11 +868,13 @@ class AMR {
                             let my_dir = Math.sign(my_tx - this.pos.x);
                             let o_dir = Math.sign(otx - o.pos.x);
                             let dist_to_o = o.pos.x - this.pos.x;
-                            if (my_dir !== 0 && Math.sign(dist_to_o) === my_dir) {
+                            let is_in_front = (my_dir !== 0 && (Math.sign(dist_to_o) === my_dir || Math.abs(dist_to_o) < 5));
+                            if (is_in_front) {
                                 // o is strictly in front of me
                                 if (my_dir === -o_dir && o_dir !== 0) {
                                     // strict head-on
                                     conflict = true;
+                                    blocked = true; // Wait for the low priority AMR to clear
                                 } else {
                                     // same direction, or o is stopped/moving vertically
                                     if (Math.abs(dist_to_o) < 80) blocked = true;
@@ -843,8 +885,18 @@ class AMR {
                 }
                 if(!conflict) return false;
                 
+                // 상대방이 이미 나를 피해 회피 중이라면, 나는 양보하지 않음
+                if (o.state.startsWith('EVADING')) return false;
+                if (this.state.startsWith('EVADING')) return true;
+
+                // [신규] 배출컨베이어에서 출차하는 AMR에게 최우선 순위 부여
+                let myExitingOutput = (this.state === 'FROM_OUTPUT_DOCK' || this.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT');
+                let oExitingOutput = (o.state === 'FROM_OUTPUT_DOCK' || o.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT');
+                
+                if (oExitingOutput && !myExitingOutput) return true; // 상대방이 출차 중이면 무조건 양보
+                if (myExitingOutput && !oExitingOutput) return false; // 내가 출차 중이면 양보 안함
+                
                 // NEW: 충전 복귀 차량은 다른 일반 물류(적재/빈차 포함) 방해 금지 (최하위 우선순위 부여)
-                let my_charging = (my_tx === CHARGE_ENTRY_NODE.x);
                 let o_charging = (otx === CHARGE_ENTRY_NODE.x);
                 if (my_charging && !o_charging) return true; // 내가 충전하러가면 무조건 위협(상대방)이 있다고 판단하여 내가 양보함
                 if (!my_charging && o_charging) return false; // 상대방이 충전하러가면 나는 무시(우선순위 가짐)
@@ -856,19 +908,50 @@ class AMR {
                     if(dt<do_) return true; if(dt>do_) return false;
                 } else if(priority_mode==='MAIN_LANE_DIST'){
                     if(dt<do_) return true; if(dt>do_) return false;
-                } else if(priority_mode==='ID_PRIORITY') return o.id<this.id;
-                return o.id<this.id;
+                } else if(priority_mode==='ID_PRIORITY') {
+                    return o.id<this.id;
+                }
+                
+                // [신규] 동일 조건일 경우, 나와 상대방 중 "회피존이 더 가까운 쪽"이 양보하도록 계산
+                let getMinEvadeDist = (amr, threat_x) => {
+                    let dir = Math.sign(amr.target_x - amr.pos.x);
+                    if(amr.state==='REVERSING_FROM_INPUT_DOCK') dir = Math.sign(getIO('IN',amr.current_io_model).exitX - amr.pos.x);
+                    if(amr.state==='REVERSING_FROM_OUTPUT_DOCK') dir = Math.sign(VERTICAL_LANE_X - amr.pos.x);
+                    if(amr.state==='FROM_CHARGE_DOCK') dir = Math.sign(CHARGE_EXIT_NODE.x - amr.pos.x);
+                    
+                    let cands = getEvadeCandidates(ldrs).filter(x => {
+                        if (dir === 1 && x >= threat_x - 25) return false;
+                        if (dir === -1 && x <= threat_x + 25) return false;
+                        return !amrs.some(a=>a.target_ldr&&a.target_ldr.x===x) &&
+                               !amrs.some(a=>a.evade_target===x) &&
+                               !amrs.some(a=>Math.abs(a.pos.x-x)<10 && Math.abs(a.pos.y-DOCKING_Y)<10);
+                    });
+                    return cands.length > 0 ? Math.min(...cands.map(x => Math.abs(x - amr.pos.x))) : Infinity;
+                };
+                
+                let my_evade_dist = getMinEvadeDist(this, o.pos.x);
+                let o_evade_dist = getMinEvadeDist(o, this.pos.x);
+                
+                if (my_evade_dist < o_evade_dist) return true;  // 내가 회피존이 더 가까우면 내가 양보(위협으로 인식)
+                if (o_evade_dist < my_evade_dist) return false; // 상대가 더 가까우면 나는 무시(우선순위 가짐)
+                
+                return o.id<this.id; // 완전히 같으면 기존처럼 ID로 결정
             });
             
             if (blocked && !threat) return; // If blocked by same-direction AMR but no evasion needed, just stop
 
             if(threat){
                 let cands=getEvadeCandidates(ldrs);
-                let free=cands.filter(x=>
-                    !amrs.some(a=>a.target_ldr&&a.target_ldr.x===x)&&
-                    !amrs.some(a=>a.evade_target===x)&&
-                    !amrs.some(a=>Math.abs(a.pos.x-x)<10&&a.pos.y<=DOCKING_Y+10)
-                );
+                let my_dir = Math.sign(this.target_x - this.pos.x);
+                let free=cands.filter(x=>{
+                    // NEW: 회피 지점이 상대방(threat) 너머에 있으면 선택 불가 (회피 중 관통 방지) - 거리 25px로 완화
+                    if (my_dir === 1 && x >= threat.pos.x - 25) return false;
+                    if (my_dir === -1 && x <= threat.pos.x + 25) return false;
+                    
+                    return !amrs.some(a=>a.target_ldr&&a.target_ldr.x===x)&&
+                           !amrs.some(a=>a.evade_target===x)&&
+                           !amrs.some(a=>Math.abs(a.pos.x-x)<10 && Math.abs(a.pos.y-DOCKING_Y)<10);
+                });
                 if(free.length>0){
                     let nx=free.sort((a,b)=>Math.abs(a-this.pos.x)-Math.abs(b-this.pos.x))[0];
                     if(this.state!=='EVADING_TO_X'){
@@ -1043,12 +1126,43 @@ case 'TO_CHARGE_DOCK': {
 
             case 'MOVING_ON_LANE': {
                 let actual_target_x = this.target_x;
-                if (this.target_x === VERTICAL_LANE_X && this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT') {
-                    let occupied = amrs.some(o => o.id !== this.id && (
-                        (o.current_io_model === this.current_io_model && (o.state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || o.state === 'TO_OUTPUT_DOCK' || o.state === 'UNLOADING' || o.state === 'MOVE_TO_EXIT_Y_AT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE')) ||
-                        o.state === 'FROM_OUTPUT_DOCK' || o.state === 'EXIT_OUTPUT_SIDE' || o.state === 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'
+                if (this.target_x === VERTICAL_LANE_X && (this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || this.next_state === 'TO_WAIT_OUTPUT_TOP')) {
+                    let outOccupied = amrs.some(o => o.id !== this.id && (
+                        ['MOVING_ON_VERTICAL_FOR_OUTPUT', 'TO_OUTPUT_DOCK', 'UNLOADING', 'MOVE_TO_EXIT_Y_AT_DOCK', 'EXIT_OUTPUT_SIDE', 'FROM_OUTPUT_DOCK', 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'].includes(o.state)
                     ));
-                    if (occupied) actual_target_x = VERTICAL_LANE_X - 60;
+                    
+                    let topWaitOccupied = amrs.some(o => o.id !== this.id && (
+                        ['WAITING_OUTPUT_TOP', 'TO_WAIT_OUTPUT_TOP', 'FROM_WAIT_OUTPUT_SIDING_TO_TOP'].includes(o.state) ||
+                        (o.state === 'MOVING_ON_LANE' && o.next_state === 'TO_WAIT_OUTPUT_TOP')
+                    ));
+                    
+                    if (outOccupied) {
+                        if (!topWaitOccupied) {
+                            this.next_state = 'TO_WAIT_OUTPUT_TOP';
+                        } else {
+                            if (this.next_state === 'MOVING_ON_VERTICAL_FOR_OUTPUT' || this.next_state === 'TO_WAIT_OUTPUT_TOP') {
+                                // 3번째 대기자는 가장 가까운 로더쪽 회피존(siding)으로
+                                let cands = getEvadeCandidates(ldrs).filter(x => {
+                                    return x < VERTICAL_LANE_X && 
+                                           !amrs.some(a=>a.target_ldr&&a.target_ldr.x===x) &&
+                                           !amrs.some(a=>a.evade_target===x) &&
+                                           !amrs.some(a=>Math.abs(a.pos.x-x)<10 && Math.abs(a.pos.y-DOCKING_Y)<10) &&
+                                           !amrs.some(a=>(a.state==='WAITING_OUTPUT_SIDING' || a.next_state==='ENTER_WAIT_OUTPUT_SIDING') && a.wait_siding_x===x);
+                                });
+                                if (cands.length > 0) {
+                                    let freeSidingX = cands.sort((a,b) => Math.abs(a - VERTICAL_LANE_X) - Math.abs(b - VERTICAL_LANE_X))[0];
+                                    this.wait_siding_x = freeSidingX;
+                                    this.target_x = freeSidingX;
+                                    this.next_state = 'ENTER_WAIT_OUTPUT_SIDING';
+                                } else {
+                                    actual_target_x = VERTICAL_LANE_X - 60;
+                                }
+                            }
+                        }
+                    } else {
+                        // Output is free, we can go directly to output
+                        this.next_state = 'MOVING_ON_VERTICAL_FOR_OUTPUT';
+                    }
                 }
                 
                 if(this.moveTowards(actual_target_x, this.getTargetLaneY(), step)){
@@ -1130,6 +1244,62 @@ case 'TO_CHARGE_DOCK': {
                     this.current_io_model=this.payload_model;
                 }
                 break;
+
+            case 'FROM_WAIT_OUTPUT_SIDING_TO_OUTPUT':
+            case 'FROM_WAIT_OUTPUT_SIDING_TO_TOP': {
+                if (this.moveTowards(this.wait_siding_x, this.getTargetLaneY(), step)) {
+                    let nextSt = this.state === 'FROM_WAIT_OUTPUT_SIDING_TO_OUTPUT' ? 'MOVING_ON_VERTICAL_FOR_OUTPUT' : 'TO_WAIT_OUTPUT_TOP';
+                    this.state = 'MOVING_ON_LANE';
+                    this.target_x = VERTICAL_LANE_X;
+                    this.next_state = nextSt;
+                }
+                break;
+            }
+
+            case 'TO_WAIT_OUTPUT_TOP': {
+                if (this.moveTowards(VERTICAL_LANE_X, WAIT_OUTPUT_TOP_Y, step)) {
+                    this.state = 'WAITING_OUTPUT_TOP';
+                }
+                break;
+            }
+
+            case 'WAITING_OUTPUT_TOP': {
+                let outOccupied = amrs.some(o => o.id !== this.id && (
+                    ['MOVING_ON_VERTICAL_FOR_OUTPUT', 'TO_OUTPUT_DOCK', 'UNLOADING', 'MOVE_TO_EXIT_Y_AT_DOCK', 'EXIT_OUTPUT_SIDE', 'FROM_OUTPUT_DOCK', 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'].includes(o.state)
+                ));
+                if (!outOccupied) {
+                    this.state = 'MOVING_ON_VERTICAL_FOR_OUTPUT';
+                }
+                break;
+            }
+
+            case 'ENTER_WAIT_OUTPUT_SIDING': {
+                if (this.moveTowards(this.wait_siding_x, DOCKING_Y, step)) {
+                    this.state = 'WAITING_OUTPUT_SIDING';
+                }
+                break;
+            }
+
+            case 'WAITING_OUTPUT_SIDING': {
+                let outOccupied = amrs.some(o => o.id !== this.id && (
+                    ['MOVING_ON_VERTICAL_FOR_OUTPUT', 'TO_OUTPUT_DOCK', 'UNLOADING', 'MOVE_TO_EXIT_Y_AT_DOCK', 'EXIT_OUTPUT_SIDE', 'FROM_OUTPUT_DOCK', 'MOVING_ON_VERTICAL_TO_LANE_FROM_OUTPUT'].includes(o.state)
+                ));
+                let topWaitOccupied = amrs.some(o => o.id !== this.id && (
+                    ['WAITING_OUTPUT_TOP', 'TO_WAIT_OUTPUT_TOP', 'FROM_WAIT_OUTPUT_SIDING_TO_TOP'].includes(o.state) ||
+                    (o.state === 'MOVING_ON_LANE' && o.next_state === 'TO_WAIT_OUTPUT_TOP')
+                ));
+                
+                let am_i_next = !amrs.some(o => o.id !== this.id && o.state === 'WAITING_OUTPUT_SIDING' && o.pos.x > this.pos.x);
+                
+                if (am_i_next) {
+                    if (!outOccupied && !topWaitOccupied) {
+                        this.state = 'FROM_WAIT_OUTPUT_SIDING_TO_OUTPUT';
+                    } else if (!topWaitOccupied) {
+                        this.state = 'FROM_WAIT_OUTPUT_SIDING_TO_TOP';
+                    }
+                }
+                break;
+            }
 
             case 'MOVING_ON_VERTICAL_FOR_OUTPUT': {
                 let dir = Math.sign(getIO('OUT',this.current_io_model).entryY - this.pos.y);
@@ -1236,14 +1406,16 @@ case 'TO_CHARGE_DOCK': {
 
             case 'EVADING_WAIT':{
                 this.wait_timer += sim_dt;
-                if(this.wait_timer < 3) return; // 3초 지연 대기 (상대 통과 후 빠른 복귀)
+                if(this.wait_timer < 3) return; // 3초 지연 대기 원복 (배속 반영 즉각 반응)
 
                 let stx=this.saved_target_x;
                 let still=amrs.some(a=>{
                     if(a.id===this.id) return false;
                     let atx=(a.state==='EVADING_TO_X')?a.evade_target:a.target_x;
                     if(a.state==='REVERSING_FROM_INPUT_DOCK') atx=getIO('IN',a.current_io_model).exitX;
-                    if(a.state==='REVERSING_FROM_OUTPUT_DOCK') atx=getIO('OUT',a.current_io_model).exitX;
+                    if(a.state==='REVERSING_FROM_OUTPUT_DOCK') atx=VERTICAL_LANE_X;
+                    if(a.state==='FROM_OUTPUT_DOCK') atx=0;
+                    if(a.state==='TO_MAIN_LANE_DOWN' || a.state==='MOVING_ON_VERTICAL_FOR_OUTPUT') atx=VERTICAL_LANE_X;
                     if(a.state==='FROM_CHARGE_DOCK') atx=CHARGE_EXIT_NODE.x;
                     let conflict=false;
                     if(Object.values(OUTPUT_ZONES).some(z=>z.entryX===stx)){
@@ -1322,29 +1494,26 @@ case 'TO_CHARGE_DOCK': {
         ctx.strokeStyle = corrLimited ? '#06b6d4' : '#475569';
         ctx.stroke();
         
-        // 바퀴 및 조명 효과
         ctx.fillStyle='#0f172a'; ctx.fillRect(15,-11,10,22); ctx.fillRect(-25,-11,10,22);
         ctx.fillStyle='#3b82f6'; ctx.beginPath();
         ctx.arc(20,-6,2,0,Math.PI*2); ctx.arc(20,6,2,0,Math.PI*2);
         ctx.arc(-20,-6,2,0,Math.PI*2); ctx.arc(-20,6,2,0,Math.PI*2); ctx.fill();
         
         if (this.payload_model) {
-            // 적재물 표시
             let pColor = this.payload_type==='OUT' ? '#facc15' : '#38bdf8';
             let pBorder = this.payload_type==='OUT' ? '#ca8a04' : '#0284c7';
             ctx.fillStyle=pColor; ctx.fillRect(-18,-8,36,16);
             ctx.strokeStyle=pBorder; ctx.strokeRect(-18,-8,36,16);
         } else {
-            // 빈 차량 상태
             ctx.fillStyle=(this.payload===0&&this.target_ldr)?'#ec4899':this.color;
             ctx.beginPath(); ctx.roundRect(-22,-8,44,16,4); ctx.fill();
         }
-        ctx.restore(); // 회전 복구하여 텍스트 정방향으로 출력
+        ctx.restore(); 
 
         if (this.payload_model) {
             ctx.fillStyle='#0f172a'; ctx.font='800 8px Inter';
             ctx.textAlign='center'; ctx.textBaseline='middle';
-            let txt = `${this.payload_type==='IN'?'투입':'배출'}`;
+            let txt = `${this.payload_type==='IN'?t('cvs_in_dock'):t('cvs_out_dock')}`;
             ctx.fillText(txt, -7, 0);
             ctx.font='700 7px Inter';
             ctx.fillText(this.payload_model.replace('M3 ',''), 8, 0);
@@ -1355,7 +1524,6 @@ case 'TO_CHARGE_DOCK': {
             ctx.fillText(lbl,0,0);
         }
 
-        // ★ [CorrSpeed] 1배속 제한 중 AMR 위에 배지 표시
         if (corrLimited) {
             ctx.fillStyle = '#06b6d4';
             ctx.beginPath(); ctx.roundRect(-10, -22, 20, 10, 3); ctx.fill();
@@ -1369,6 +1537,11 @@ case 'TO_CHARGE_DOCK': {
             ctx.font = '24px Arial';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText('⚡', 0, -28);
+        } else if (this.state === 'WAITING_INPUT' || this.state === 'EVADING_WAIT') {
+            ctx.fillStyle = '#ef4444';
+            ctx.font = '800 10px Inter';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(t('cvs_waiting'), 0, -28);
         }
 
         ctx.restore();
@@ -1400,12 +1573,12 @@ function setupLoaderGrid() {
                 <div style="display:flex; align-items:center; gap:2px;"><span id="pre-eject-label-${i}" style="${labelStyle} font-size:10px;">사전:</span><input type="number" value="${l.preEjectTrays}" min="1" max="9" style="width:30px; padding:1px; font-size:10px;" onchange="window.setLoaderPreEject(${i}, parseInt(this.value))"></div>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px; background:#f1f5f9; padding:2px 4px; border-radius:4px;">
-                <span style="font-weight:bold; font-size:10px;">대기:</span>
+                <span style="font-weight:bold; font-size:10px;" data-i18n="cvs_waiting">대기:</span>
                 <span id="ldr-wait-${i}" style="font-weight:bold; font-size:11px; font-family:monospace;">00:00:00</span>
             </div>
             <div style="display:flex; gap:2px; margin-top:4px;">
                 <button class="btn btn-toggle" style="flex:1; padding:2px; font-size:10px;" onclick="window.toggleLoader(${i})">Toggle</button>
-                <button class="btn" style="flex:1; background:#6366f1; color:white; font-size:10px; padding:2px;" onclick="window.showLoaderLog(${i})">로그</button>
+                <button class="btn" style="flex:1; background:#6366f1; color:white; font-size:10px; padding:2px;" onclick="window.showLoaderLog(${i})" data-i18n="ui_log">로그</button>
             </div>
         `;
         grid.appendChild(div);
@@ -1427,7 +1600,7 @@ function setupAmrGrid() {
             </div>
             <div class="amr-battery-info" id="amr-bat-text-${i}" style="font-size:10px; margin-bottom:4px;">8h 0m (100%)</div>
             <div class="amr-controls" style="font-size:10px; margin-bottom:2px;">
-                <span style="color:#64748b;">속도:</span>
+                <span style="color:#64748b;" data-i18n="ui_speed">속도:</span>
                 <div style="display:flex; align-items:center; gap:2px;">
                     <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrSpeed(${i}, -0.1)">-</button>
                     <span id="amr-spd-${i}" style="width:35px; text-align:center;">${a.speed_mps.toFixed(1)}m/s</span>
@@ -1435,7 +1608,7 @@ function setupAmrGrid() {
                 </div>
             </div>
             <div class="amr-controls" style="font-size:10px;">
-                <span style="color:#64748b;">복귀:</span>
+                <span style="color:#64748b;" data-i18n="ui_return">복귀:</span>
                 <div style="display:flex; align-items:center; gap:2px;">
                     <button class="btn-small" style="padding:1px 4px; font-size:10px;" onclick="window.adjAmrReturnTime(${i}, -1800)">-</button>
                     <span id="amr-ret-time-${i}" style="width:35px; text-align:center;">${(a.min_return_time / 3600).toFixed(1)}h</span>
@@ -1469,8 +1642,8 @@ window.setLoaderPreEject = function(i, val) {
 window.adjAmrReturnTime = function(i, diff) {
     if(!amrs[i]) return;
     let newTime = amrs[i].min_return_time + diff;
-    if(newTime < 1800) newTime = 1800; // min 0.5h
-    if(newTime > 8 * 3600) newTime = 8 * 3600; // max 8h
+    if(newTime < 1800) newTime = 1800;
+    if(newTime > 8 * 3600) newTime = 8 * 3600;
     amrs[i].min_return_time = newTime;
     document.getElementById(`amr-ret-time-${i}`).innerText = (newTime / 3600).toFixed(1) + "h";
 };
@@ -1479,7 +1652,7 @@ window.updateLoaderModel = function(i, modelName) {
     const m = MODELS.find(x => x.name === modelName);
     if (m) {
         ldrs[i].model = m;
-        ldrs[i].cycleTime = m.ct; // V33: 모델 변경 시 cycleTime도 즉시 동기화
+        ldrs[i].cycleTime = m.ct / 2;
         const ctInput = document.getElementById(`ct-input-${i}`);
         if(ctInput) ctInput.value = m.ct;
     }
@@ -1493,7 +1666,6 @@ window.toggleLoader = function(i) {
 };
 
 window.showSimulationReport = function() {
-    // 수집된 데이터 계산
     let avgLoadFactor = manager.loadSamples > 0 ? (manager.totalLoadFactor / manager.loadSamples) : 0;
     
     let totalProd = Object.values(global_production).reduce((a,b)=>a+b, 0);
@@ -1519,27 +1691,32 @@ window.showSimulationReport = function() {
     
     let sortedLoaders = [...ldrs].filter(l => l.cumulative_wait > 0).sort((a,b) => b.cumulative_wait - a.cumulative_wait);
     
-    let html = `<h2 style="margin-top:0; color:#1e293b; border-bottom:2px solid #e2e8f0; padding-bottom:10px; font-size:18px;">📊 시뮬레이션 종료 종합 리포트</h2>`;
+    let html = `<h2 style="margin-top:0; color:#1e293b; border-bottom:2px solid #e2e8f0; padding-bottom:10px; font-size:18px;">${t('rep_title')}</h2>`;
     html += `<div style="max-height:60vh; overflow-y:auto; padding-right:10px;">`;
 
     // 1. 작업 처리 능력 및 물류 생산성
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
-    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">1. 작업 처리 능력 및 물류 생산성</h3>`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">${t('rep_sec1')}</h3>`;
     html += `<ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.6;">`;
-    html += `<li><strong>목표 조업 시간:</strong> ${manager.targetHours}시간</li>`;
-    html += `<li><strong>시스템 평균 부하율:</strong> ${avgLoadFactor.toFixed(1)}%</li>`;
-    html += `<li><strong>총 배출 수량 (Total):</strong> ${totalProd.toLocaleString()}개</li>`;
-    html += `<li><strong>기종별 누적 배출량:</strong> M3 5X: <span style="color:#2563eb; font-weight:bold;">${global_production['M3 5X']}</span>개 | M3 UPPER: <span style="color:#16a34a; font-weight:bold;">${global_production['M3 UPPER']}</span>개 | M3 2ND: <span style="color:#d97706; font-weight:bold;">${global_production['M3 2ND']}</span>개 | Min: <span style="color:#ec4899; font-weight:bold;">${global_production['Min']}</span>개</li>`;
-    html += `<li><strong>설비(로더) 총 다운타임:</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
+    html += `<li><strong>${t('ui_sim_target')}:</strong> ${manager.targetHours}${t('ui_hours')}</li>`;
+    html += `<li><strong>${t('rep_load_factor')}</strong> ${avgLoadFactor.toFixed(1)}%</li>`;
+    html += `<li><strong>${t('rep_total_out')}</strong> ${totalProd.toLocaleString()}개</li>`;
+    let prodStr = MODELS.map((m, idx) => {
+        let colors = ['#2563eb', '#16a34a', '#d97706', '#ec4899', '#8b5cf6', '#06b6d4'];
+        let color = colors[idx % colors.length];
+        return `${m.name}: <span style="color:${color}; font-weight:bold;">${global_production[m.name] || 0}</span>개`;
+    }).join(' | ');
+    html += `<li><strong>${t('rep_out_by_model')}</strong> ${prodStr}</li>`;
+    html += `<li><strong>${t('rep_total_downtime')}</strong> <span style="color:#ef4444; font-weight:bold;">${formatTime(stats.totalWait)}</span></li>`;
     html += `</ul>`;
     
     // 전체 로더 대기 현황 (대기 발생한 로더 전체)
     let waitingLoaders = [...ldrs].filter(l => l.cumulative_wait > 0);
     if (waitingLoaders.length > 0) {
         html += `<div style="margin-top:10px;">`;
-        html += `<h4 style="margin:0 0 6px 0; color:#334155; font-size:13px;">⚠️ 설비(로더) 대기 발생 현황</h4>`;
+        html += `<h4 style="margin:0 0 6px 0; color:#334155; font-size:13px;">⚠️ ${t('rep_s1_t_delay')}</h4>`;
         html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px;">`;
-        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">로더</th><th style="padding:4px 8px;">대기 횟수</th><th style="padding:4px 8px;">누적 대기시간</th></tr>`;
+        html += `<tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;"><th style="padding:4px 8px;">No.</th><th style="padding:4px 8px;">${t('rep_loader')}</th><th style="padding:4px 8px;">${t('rep_wait_count')}</th><th style="padding:4px 8px;">${t('rep_wait_time')}</th></tr>`;
         // 누적 대기시간이 가장 많은 호기부터 내림차순 정렬
         waitingLoaders.sort((a,b) => b.cumulative_wait - a.cumulative_wait).forEach((l, index) => {
             html += `<tr style="border-bottom:1px solid #e2e8f0;">
@@ -1555,39 +1732,39 @@ window.showSimulationReport = function() {
 
     // 2. AMR 활용률 및 유휴 시간 분석
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
-    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">2. AMR 활용률 및 유휴 시간 분석</h3>`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">${t('rep_sec2')}</h3>`;
     let utilColor = utilRate > 95 ? '#ef4444' : (utilRate > 80 ? '#10b981' : '#f59e0b');
-    html += `<p style="margin:0 0 8px 0; font-size:13px; color:#475569;"><strong>전체 평균 활용률:</strong> <span style="color:${utilColor}; font-weight:bold;">${utilRate.toFixed(1)}%</span></p>`;
+    html += `<p style="margin:0 0 8px 0; font-size:13px; color:#475569;"><strong>${t('rep_s2_avg_util')}</strong> <span style="color:${utilColor}; font-weight:bold;">${utilRate.toFixed(1)}%</span></p>`;
     html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1;">`;
-    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">활성(작업)</th><th style="padding:4px;">유휴(대기)</th><th style="padding:4px;">충전소요</th></tr>`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">${t('rep_s2_t_amr')}</th><th style="padding:4px;">${t('rep_s2_t_act')}</th><th style="padding:4px;">${t('rep_s2_t_idle')}</th><th style="padding:4px;">${t('rep_s2_t_chg')}</th></tr>`;
     amrs.forEach(a => {
-        let t = a.active_time + a.idle_time + a.charging_time + a.traffic_wait_time;
-        if(t===0) t=1;
+        let tm = a.active_time + a.idle_time + a.charging_time + a.traffic_wait_time;
+        if(tm===0) tm=1;
         html += `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
-            <td style="padding:4px;">${((a.active_time/t)*100).toFixed(1)}%</td>
-            <td style="padding:4px;">${((a.idle_time/t)*100).toFixed(1)}%</td>
-            <td style="padding:4px;">${((a.charging_time/t)*100).toFixed(1)}%</td>
+            <td style="padding:4px;">${((a.active_time/tm)*100).toFixed(1)}%</td>
+            <td style="padding:4px;">${((a.idle_time/tm)*100).toFixed(1)}%</td>
+            <td style="padding:4px;">${((a.charging_time/tm)*100).toFixed(1)}%</td>
         </tr>`;
     });
     html += `</table></div>`;
 
     // 3. 배터리 소모 및 충전 관리
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
-    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">3. 배터리 소모 및 충전 관리</h3>`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">${t('rep_sec3')}</h3>`;
     html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1; margin-top:8px;">`;
-    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">기회 충전 횟수</th><th style="padding:4px;">최저 배터리율</th><th style="padding:4px;">현재 잔량</th><th style="padding:4px;">현재 상태 (Status)</th></tr>`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">${t('rep_s2_t_amr')}</th><th style="padding:4px;">${t('rep_s3_t_cnt')}</th><th style="padding:4px;">${t('rep_s3_t_min')}</th><th style="padding:4px;">${t('rep_s3_t_cur')}</th><th style="padding:4px;">${t('rep_s3_t_stat')}</th></tr>`;
     amrs.forEach(a => {
         let batteryPct = ((a.battery / (8 * 3600)) * 100).toFixed(1);
         let minSocPct = a.min_soc.toFixed(1);
-        let statusStr = "대기 중";
-        if (a.state === 'CHARGING') statusStr = "충전 중";
-        else if (a.payload > 0) statusStr = "작업 중 (적재)";
-        else if (a.state === 'EVADING_WAIT') statusStr = "회피 대기 중";
-        else if (a.active_time > 0 && a.target_ldr) statusStr = "이동 중 (빈 차)";
+        let statusStr = t('rep_stat_wait');
+        if (a.state === 'CHARGING') statusStr = t('rep_stat_chg');
+        else if (a.payload > 0) statusStr = t('rep_stat_work');
+        else if (a.state === 'EVADING_WAIT') statusStr = t('rep_stat_ev');
+        else if (a.active_time > 0 && a.target_ldr) statusStr = t('rep_stat_mov');
         html += `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
-            <td style="padding:4px;">${a.charge_count}회</td>
+            <td style="padding:4px;">${a.charge_count}</td>
             <td style="padding:4px; font-weight:bold; color:${a.min_soc < 20 ? '#ef4444' : '#10b981'}">${minSocPct}%</td>
             <td style="padding:4px; color:${batteryPct < 20 ? '#ef4444' : '#1e293b'}">${batteryPct}%</td>
             <td style="padding:4px;">${statusStr}</td>
@@ -1597,15 +1774,15 @@ window.showSimulationReport = function() {
 
     // 4. 주행 트래픽 및 경로 효율성
     html += `<div style="background:#f1f5f9; padding:12px; border-radius:6px; margin-bottom:12px;">`;
-    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">4. 주행 트래픽 및 경로 효율성</h3>`;
+    html += `<h3 style="margin:0 0 8px 0; color:#0f172a; font-size:14px;">${t('rep_sec4')}</h3>`;
     html += `<table style="width:100%; border-collapse:collapse; text-align:center; font-size:12px; background:#fff; border:1px solid #cbd5e1; margin-top:8px;">`;
-    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">AMR</th><th style="padding:4px;">교착/회피 횟수</th><th style="padding:4px;">총 주행 거리</th><th style="padding:4px;">시간당 주행 거리</th></tr>`;
+    html += `<tr style="background:#e2e8f0;"><th style="padding:4px;">${t('rep_s2_t_amr')}</th><th style="padding:4px;">${t('rep_s4_t_ev')}</th><th style="padding:4px;">${t('rep_s4_t_dist')}</th><th style="padding:4px;">${t('rep_s4_t_dist_h')}</th></tr>`;
     amrs.forEach(a => {
         let amrDist = a.total_distance / PX_PER_M / 1000;
         let amrDistPerHour = manager.global_time > 0 ? (amrDist / (manager.global_time / 3600)).toFixed(2) : 0;
         html += `<tr style="border-bottom:1px solid #f1f5f9;">
             <td style="padding:4px; font-weight:bold; color:${a.color}">#${a.id+1}</td>
-            <td style="padding:4px;">${a.evasion_count}회</td>
+            <td style="padding:4px;">${a.evasion_count}</td>
             <td style="padding:4px;">${amrDist.toFixed(2)} km</td>
             <td style="padding:4px;">${amrDistPerHour} km/hr</td>
         </tr>`;
@@ -1624,11 +1801,10 @@ function init(){
     manager = new SimulationManager();
     manager.speed = 1; // [변경] 기본 1배속 설정
     manager.targetHours = 10; // [변경] 기본 10시간 설정
-    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
-    document.getElementById('prod-m3-5x').innerText='0';
-    document.getElementById('prod-m3-upper').innerText='0';
-    document.getElementById('prod-m3-2nd').innerText='0';
-    if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText='0';
+    global_production = {};
+    MODELS.forEach(m => global_production[m.name] = 0);
+    renderDashboardStats();
+    // UI 동적 생성 함수 호출은 renderDashboardStats 내부에 포함됨
     updateExtraSidings();
     ldrs=[]; amrs=[];
     const gap = CORRIDOR_PX / 12;
@@ -1733,7 +1909,7 @@ function draw(){
     // 보행자 레인
     ctx.fillStyle=COLOR_PED_LANE; ctx.fillRect(0,dynamic_ped_lane_y-25,VERTICAL_LANE_X+14,50);
     ctx.fillStyle='#64748b'; ctx.font='800 14px Inter'; ctx.textAlign='left';
-    ctx.fillText('보행자',20,dynamic_ped_lane_y+5);
+    ctx.fillText(t('cvs_pedestrian'),20,dynamic_ped_lane_y+5);
 
     let dashOffset = -(Date.now() / 30) % 100;
 
@@ -1743,7 +1919,7 @@ function draw(){
         ctx.beginPath(); ctx.moveTo(0,OUTPUT_LANE_Y); ctx.lineTo(WIDTH,OUTPUT_LANE_Y);
         ctx.strokeStyle='#3b82f6'; ctx.lineWidth=2; ctx.setLineDash([8,4]); ctx.lineDashOffset = dashOffset; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
         ctx.fillStyle='#3b82f6'; ctx.font='800 12px Inter'; ctx.textAlign='left';
-        ctx.fillText('배출 경로 (2라인)',20,OUTPUT_LANE_Y+12);
+        ctx.fillText(t('cvs_out_path'),20,OUTPUT_LANE_Y+12);
     }
 
     // 투입 레인
@@ -1753,7 +1929,7 @@ function draw(){
     ctx.beginPath(); ctx.moveTo(0,AMR_LANE_Y); ctx.lineTo(VERTICAL_LANE_X+14,AMR_LANE_Y);
     ctx.strokeStyle=COLOR_AMR_LINE; ctx.lineWidth=2; ctx.setLineDash([15,10]); ctx.lineDashOffset = dashOffset; ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset=0;
     ctx.fillStyle=COLOR_AMR_LINE; ctx.font='800 12px Inter'; ctx.textAlign='left';
-    ctx.fillText(dual_lane?'투입 경로 (1라인)':'AMR',20,AMR_LANE_Y-18);
+    ctx.fillText(dual_lane?t('cvs_in_path'):'AMR',20,AMR_LANE_Y-18);
 
     // 회피구간 하이라이트
     let evZones=[];
@@ -1793,11 +1969,17 @@ function draw(){
     });
 
         // ===== MULTI INPUT ZONES =====
+    let drawnInLines = new Set();
     Object.values(INPUT_ZONES).forEach((zone, i) => {
+        let lineIdx = zone.lineIdx;
+        if (drawnInLines.has(lineIdx)) return;
+        drawnInLines.add(lineIdx);
+        
         let ix=zone.entryX, iy=zone.y;
         let iEntX=zone.entryX, iExX=zone.exitX;
         let iLaneY=dual_lane?OUTPUT_LANE_Y:AMR_LANE_Y;
-        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
+        
+        let modelsInLine = Object.keys(INPUT_ZONES).filter(k => INPUT_ZONES[k].lineIdx === lineIdx);
         
         ctx.strokeStyle='rgba(234,88,12,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
         ctx.beginPath(); ctx.moveTo(iEntX,iLaneY); ctx.lineTo(iEntX,iy-45); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
@@ -1809,9 +1991,9 @@ function draw(){
         ctx.lineTo(iEntX+10,iy-45); ctx.lineTo(iEntX+10,iLaneY+10); ctx.stroke();
         
         ctx.fillStyle='rgba(234,88,12,0.8)'; ctx.font='bold 9px Inter'; ctx.textAlign='center';
-        ctx.fillText('▼입차',iEntX,iLaneY+14);
+        ctx.fillText(t('cvs_enter'),iEntX,iLaneY+14);
         ctx.fillStyle='rgba(16,185,129,0.9)';
-        ctx.fillText('▲출차',iExX,iLaneY+14);
+        ctx.fillText(t('cvs_exit'),iExX,iLaneY+14);
         
         let isDocking = amrs.some(a => a.pos.x >= iExX - 5 && a.pos.x <= iEntX + 5 && a.pos.y > AMR_LANE_Y + 10 && !['TO_CHARGE_DOCK','ENTERING_BAY','CHARGING','EXITING_BAY','FROM_CHARGE_DOCK'].includes(a.state));
         if(isDocking) {
@@ -1820,10 +2002,14 @@ function draw(){
             ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
         }
         ctx.fillStyle='#fde68a';
-        ctx.beginPath(); ctx.roundRect(iExX-15,iy-45,iEntX-iExX+30,90,12); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(iExX-15,iy-45,iEntX-iExX+30,110,12); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#334155'; ctx.lineWidth=2; ctx.stroke();
         ctx.fillStyle='#0f172a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='700 11px Inter'; ctx.fillText('IN ' + modelNames[i].replace('M3 ',''),(iEntX+iExX)/2,iy);
+        ctx.font='700 9px Inter'; 
+        ctx.fillText(t('cvs_in_dock'),(iEntX+iExX)/2,iy-15);
+        modelsInLine.forEach((m, idx) => {
+             ctx.fillText(m.replace('M3 ',''),(iEntX+iExX)/2,iy + idx*10);
+        });
     });
 // ===== CHARGE 전용 라인 및 베이 (4칸) =====
     let cExX = CHARGE_EXIT_X, cEntX = CHARGE_ENTRY_X;
@@ -1832,11 +2018,11 @@ function draw(){
     ctx.strokeStyle='rgba(234,88,12,0.6)';
     ctx.beginPath(); ctx.moveTo(cEntX, AMR_LANE_Y); ctx.lineTo(cEntX, 700); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
     ctx.fillStyle='rgba(16,185,129,0.9)'; ctx.font='bold 10px Inter'; ctx.textAlign='center';
-    ctx.fillText('▲출차', cExX, AMR_LANE_Y+14);
+    ctx.fillText(t('cvs_exit'), cExX, AMR_LANE_Y+14);
     ctx.fillStyle='rgba(234,88,12,0.9)';
-    ctx.fillText('▼입차', cEntX, AMR_LANE_Y+14);
+    ctx.fillText(t('cvs_enter'), cEntX, AMR_LANE_Y+14);
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < amrs.length; i++) {
         let bayY = 580 + (i * 1.2 * PX_PER_M);
         ctx.fillStyle='#f1f5f9'; ctx.fillRect(CHARGE_BAY_X-40, bayY-20, 80, 40);
         ctx.strokeStyle='rgba(59,130,246,0.4)'; ctx.lineWidth=2;
@@ -1847,7 +2033,7 @@ function draw(){
         ctx.beginPath(); ctx.roundRect(CHARGE_BAY_X - 25, bayY - 20, 50, 40, 8); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#2563eb'; ctx.lineWidth=2; ctx.stroke();
         ctx.fillStyle='#1e3a8a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='700 10px Inter'; ctx.fillText('충전 #'+(i+1), CHARGE_BAY_X, bayY);
+        ctx.font='700 10px Inter'; ctx.fillText(t('cvs_charge_dock') + (i+1), CHARGE_BAY_X, bayY);
 
         // [변경] 충전 횟수 표시 시인성 개선 (단독 UI 구성)
         if(amrs[i]) {
@@ -1857,9 +2043,14 @@ function draw(){
     }
 
         // ===== MULTI OUTPUT ZONES =====
+    let drawnOutLines = new Set();
     Object.values(OUTPUT_ZONES).forEach((zone, i) => {
+        let lineIdx = zone.lineIdx;
+        if (drawnOutLines.has(lineIdx)) return;
+        drawnOutLines.add(lineIdx);
+        
         let ox=zone.x, oEntY=zone.entryY, oExY=zone.exitY;
-        let modelNames = ['M3 5X', 'M3 UPPER', 'M3 2ND', 'Min'];
+        let modelsInLine = Object.keys(OUTPUT_ZONES).filter(k => OUTPUT_ZONES[k].lineIdx === lineIdx);
 
         ctx.strokeStyle='rgba(59,130,246,0.6)'; ctx.lineWidth=2; ctx.setLineDash([5,5]); ctx.lineDashOffset = dashOffset;
         ctx.beginPath(); ctx.moveTo(VERTICAL_LANE_X,oEntY); ctx.lineTo(ox-30,oEntY); ctx.stroke(); ctx.setLineDash([]); ctx.lineDashOffset = 0;
@@ -1872,9 +2063,9 @@ function draw(){
         ctx.lineTo(ox-10, oExY+10); ctx.lineTo(ox-30, oExY+10); ctx.stroke();
         
         ctx.fillStyle='rgba(59,130,246,0.9)'; ctx.font='bold 9px Inter'; ctx.textAlign='center';
-        ctx.fillText('▶입차', VERTICAL_LANE_X+15, oEntY-4);
+        ctx.fillText(t('cvs_enter'), VERTICAL_LANE_X+15, oEntY-4);
         ctx.fillStyle='rgba(139,92,246,0.9)';
-        ctx.fillText('◀출차', VERTICAL_LANE_X+15, oExY-4);
+        ctx.fillText(t('cvs_exit'), VERTICAL_LANE_X+15, oExY-4);
         
         let isDocking = amrs.some(a => (a.state === 'UNLOADING' || a.state === 'TO_OUTPUT_DOCK') && Math.abs(a.pos.y - oEntY) < 20);
         if(isDocking) {
@@ -1883,10 +2074,12 @@ function draw(){
             ctx.shadowColor='rgba(0,0,0,0.1)'; ctx.shadowBlur=5;
         }
         ctx.fillStyle='#bfdbfe';
-        ctx.beginPath(); ctx.roundRect(ox-10, oEntY-15, 90, oExY-oEntY+30, 12); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(ox-10, oEntY-15, 130, oExY-oEntY+30, 12); ctx.fill();
         ctx.shadowBlur=0; ctx.strokeStyle='#334155'; ctx.lineWidth=2; ctx.stroke();
         ctx.fillStyle='#0f172a'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.font='700 11px Inter'; ctx.fillText('OUT ' + modelNames[i].replace('M3 ',''), ox+35, (oEntY+oExY)/2);
+        ctx.font='700 9px Inter';
+        // 모델명 삭제하고 cvs_out_dock 텍스트만 표시
+        ctx.fillText(t('cvs_out_dock'), ox+50, (oEntY+oExY)/2);
     });
     
     // [NEW] 1열 1~10호기(인덱스 0~9) 상단(2열 위치)에 빈 CNC 사각 박스 그리기
@@ -1985,20 +2178,20 @@ window.showLoaderLog = function(i) {
     const content = document.getElementById('logContent');
     if (!modal || !content) return;
 
-    let html = `<h3>Loader #${i+1} 대기지연 이력</h3>`;
-    html += `<p style="margin-bottom:10px; color:#64748b;">총 대기 횟수: ${l.wait_history.length}회 / 누적 대기시간: ${formatTime(l.cumulative_wait)}</p>`;
+    let html = `<h3>Loader #${i+1} ${t('log_title')}</h3>`;
+    html += `<p style="margin-bottom:10px; color:#64748b;">${t('rep_wait_count')}: ${l.wait_history.length} / ${t('rep_wait_time')}: ${formatTime(l.cumulative_wait)}</p>`;
     
     if (l.wait_history.length === 0) {
-        html += `<div style="padding:20px; text-align:center; color:#94a3b8;">대기 기록이 없습니다.</div>`;
+        html += `<div style="padding:20px; text-align:center; color:#94a3b8;">${t('msg_no_wait_log')}</div>`;
     } else {
         html += `<div class="log-table-container">
             <table class="log-table">
                 <thead>
                     <tr>
-                        <th>횟수</th>
-                        <th>시점</th>
-                        <th>대기시간</th>
-                        <th>당시 상황 (AMR 상태)</th>
+                        <th>No.</th>
+                        <th>${t('log_occur')}</th>
+                        <th>${t('log_dur')}</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>`;
@@ -2063,11 +2256,9 @@ function softReset() {
     manager.history = []; // V40: 히스토리도 초기화
     manager.totalLoadFactor = 0;
     manager.loadSamples = 0;
-    global_production={'M3 5X':0,'M3 UPPER':0,'M3 2ND':0, 'Min':0};
-    document.getElementById('prod-m3-5x').innerText='0';
-    document.getElementById('prod-m3-upper').innerText='0';
-    document.getElementById('prod-m3-2nd').innerText='0';
-    if(document.getElementById('prod-min')) document.getElementById('prod-min').innerText='0';
+    global_production = {};
+    MODELS.forEach(m => global_production[m.name] = 0);
+    renderDashboardStats();
     stats = { calls: 0, totalWait: 0 };
     // V40: UI 즉시 갱신
     if (document.getElementById('val-wait')) document.getElementById('val-wait').innerText = '00:00:00';
@@ -2122,17 +2313,6 @@ function resetAmrAssignments(){ ldrs.forEach(l=>l.amr_assigned=false); }
 function hardReset() {
     location.reload();
 }
-
-document.getElementById('btn-apply-min-all').addEventListener('click', () => {
-    ldrs.forEach((l, i) => {
-        if(l.active) {
-            window.updateLoaderModel(i, 'Min');
-        }
-    });
-    if (typeof setupLoaderGrid === 'function') {
-        setupLoaderGrid();
-    }
-});
 
 document.getElementById('btn-soft-reset').addEventListener('click',()=>{
     softReset();
@@ -2201,5 +2381,201 @@ document.getElementById('btn-instant-complete').addEventListener('click', (e) =>
     processChunk();
 });
 
+// ===== 동적 모델 UI 관리 로직 =====
+function renderDashboardStats() {
+    const container = document.getElementById('statsPanelContainer');
+    if (!container) return;
+    
+    let html = '';
+    const colors = ['#60a5fa', '#34d399', '#a78bfa', '#f472b6', '#fbbf24', '#2dd4bf'];
+    MODELS.forEach((m, idx) => {
+        let safeId = 'prod-' + m.name.replace(/[^a-zA-Z0-9]/g, '');
+        let color = colors[idx % colors.length];
+        html += `
+            <div class="stat-box" style="background:#334155; border:1px solid #475569; padding: 2px 8px;">
+                <span style="color:${color}; font-weight:bold; font-size: 10px;">${m.name}</span>
+                <span id="${safeId}" class="count" style="font-size: 14px;">${global_production[m.name] || 0}</span>
+            </div>
+        `;
+    });
+    
+    // reset 버튼 그룹은 그대로 유지
+    html += `
+        <div class="btn-group-reset" style="display:flex; gap:5px; margin-left:20px; align-items:center;">
+                        <button id="btn-soft-reset" class="btn btn-reset-large" style="background:#ef4444; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);" data-i18n="btn_soft_reset">${t('btn_soft_reset')}</button>
+            <button id="btn-hard-reset" class="btn btn-reset-large" style="background:#b91c1c; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);" data-i18n="btn_hard_reset">${t('btn_hard_reset')}</button>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+    
+    // 버튼 이벤트 재바인딩
+    const btnSoft = document.getElementById('btn-soft-reset');
+    const btnHard = document.getElementById('btn-hard-reset');
+        if(btnSoft) btnSoft.addEventListener('click', softReset);
+    if(btnHard) btnHard.addEventListener('click', () => { 
+        if(confirm(t('msg_reset_confirm'))) location.reload(); 
+    });
+    }
+
+let editingModelIdx = -1;
+
+function renderModelManageTable() {
+    const tbody = document.getElementById('modelTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    MODELS.forEach((m, idx) => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #e2e8f0';
+        
+        if (editingModelIdx === idx) {
+            tr.innerHTML = `
+                <td style="padding:8px;"><input type="text" id="edit-name-${idx}" value="${m.name}" style="width:100px; padding:4px; text-align:center; font-weight:bold; color:#1e293b; border:1px solid #94a3b8; border-radius:4px;"></td>
+                <td style="padding:8px;"><input type="number" id="edit-ct-${idx}" value="${m.ct}" style="width:60px; padding:4px; text-align:center; border:1px solid #94a3b8; border-radius:4px;"></td>
+                <td style="padding:8px;">
+                    <button class="btn" style="background:#10b981; color:white; padding:4px 10px; font-size:11px;" onclick="saveModelEdit(${idx})">${t('btn_save')}</button>
+                    <button class="btn" style="background:#64748b; color:white; padding:4px 10px; font-size:11px; margin-left:5px;" onclick="cancelModelEdit()">${t('btn_cancel')}</button>
+                </td>
+            `;
+        } else {
+            tr.innerHTML = `
+                <td style="padding:8px; font-weight:bold; color:#1e293b;">${m.name}</td>
+                <td style="padding:8px;">${m.ct}</td>
+                <td style="padding:8px;">
+                    <button class="btn" style="background:#3b82f6; color:white; padding:4px 10px; font-size:11px;" onclick="startModelEdit(${idx})">${t('btn_edit')}</button>
+                    <button class="btn" style="background:#ef4444; color:white; padding:4px 10px; font-size:11px; margin-left:5px;" onclick="deleteModel(${idx})">${t('btn_delete')}</button>
+                </td>
+            `;
+        }
+        tbody.appendChild(tr);
+    });
+}
+
+window.startModelEdit = function(idx) {
+    editingModelIdx = idx;
+    renderModelManageTable();
+};
+
+window.cancelModelEdit = function() {
+    editingModelIdx = -1;
+    renderModelManageTable();
+};
+
+window.saveModelEdit = function(idx) {
+    const oldName = MODELS[idx].name;
+    const newName = document.getElementById(`edit-name-${idx}`).value.trim();
+    const newCT = parseInt(document.getElementById(`edit-ct-${idx}`).value);
+    
+    if (!newName || isNaN(newCT) || newCT <= 0) {
+        alert(t('msg_model_invalid'));
+        return;
+    }
+    if (newName !== oldName && MODELS.find(m => m.name === newName)) {
+        alert(t('msg_model_dup'));
+        return;
+    }
+    
+    MODELS[idx].name = newName;
+    MODELS[idx].ct = newCT;
+    
+    // 글로벌 통계 변수 이름 업데이트
+    if (oldName !== newName && global_production[oldName] !== undefined) {
+        global_production[newName] = global_production[oldName];
+        delete global_production[oldName];
+    } else if (global_production[newName] === undefined) {
+        global_production[newName] = 0;
+    }
+    
+    // 로더 정보 업데이트
+    ldrs.forEach(l => {
+        if (l.model.name === oldName || l.model.name === newName) {
+            l.model.name = newName;
+            l.cycleTime = newCT / 2;
+        }
+    });
+    
+    // AMR 정보 업데이트
+    amrs.forEach(a => {
+        if (a.current_io_model === oldName) a.current_io_model = newName;
+        if (a.payload_model === oldName) a.payload_model = newName;
+    });
+    
+    saveModels();
+    updateIOZones();
+    
+    editingModelIdx = -1;
+    setupLoaderGrid();
+    renderDashboardStats();
+    renderModelManageTable();
+    softReset();
+    
+    alert(t('msg_model_saved'));
+};
+
+window.deleteModel = function(idx) {
+    if (MODELS.length <= 1) {
+        alert(t('msg_model_del_min'));
+        return;
+    }
+    const modelName = MODELS[idx].name;
+    // 현재 로더들이 이 기종을 쓰고 있다면 첫번째 기종으로 임시 변경
+    let replaceModel = MODELS[0].name === modelName ? MODELS[1] : MODELS[0];
+    ldrs.forEach((l, i) => {
+        if (l.model.name === modelName) {
+            window.updateLoaderModel(i, replaceModel.name);
+        }
+    });
+    
+    MODELS.splice(idx, 1);
+    saveModels();
+    updateIOZones();
+    setupLoaderGrid();
+    renderModelManageTable();
+    softReset();
+};
+
+if (document.getElementById('btn-model-manage')) {
+    document.getElementById('btn-model-manage').addEventListener('click', () => {
+        renderModelManageTable();
+        document.getElementById('modelManageModal').style.display = 'flex';
+    });
+}
+
+if (document.getElementById('btn-add-model')) {
+    document.getElementById('btn-add-model').addEventListener('click', () => {
+        const nameInput = document.getElementById('newModelName');
+        const ctInput = document.getElementById('newModelCT');
+        const name = nameInput.value.trim();
+        const ct = parseInt(ctInput.value);
+        
+        if (MODELS.length >= 6) {
+            alert(t('msg_model_max'));
+            return;
+        }
+        if (!name || isNaN(ct) || ct <= 0) {
+            alert(t('msg_model_invalid'));
+            return;
+        }
+        if (MODELS.find(m => m.name === name)) {
+            alert(t('msg_model_dup'));
+            return;
+        }
+        
+        MODELS.push({ name, ct });
+        saveModels();
+        updateIOZones();
+        
+        nameInput.value = '';
+        ctInput.value = '';
+        
+        setupLoaderGrid();
+        renderModelManageTable();
+        softReset();
+    });
+}
+
+// init 호출 전에 renderDashboardStats 최초 1회 실행
+renderDashboardStats();
 init();
 requestAnimationFrame(loop);
