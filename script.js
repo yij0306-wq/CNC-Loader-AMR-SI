@@ -1654,7 +1654,7 @@ window.updateLoaderModel = function(i, modelName) {
         ldrs[i].model = m;
         ldrs[i].cycleTime = m.ct / 2;
         const ctInput = document.getElementById(`ct-input-${i}`);
-        if(ctInput) ctInput.value = m.ct;
+        if(ctInput) ctInput.value = m.ct / 2;
     }
 };
 
@@ -2579,5 +2579,3 @@ if (document.getElementById('btn-add-model')) {
 renderDashboardStats();
 init();
 requestAnimationFrame(loop);
-
-// Final Version Updated
