@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 try {
-    const scriptPath = 'c:\\Users\\user\\Desktop\\Project\\5. CNC Loader\\Layout_V52_Multi_Language\\script.js';
+    const scriptPath = 'c:\\Users\\user\\Desktop\\Project\\5. CNC Loader\\Layout_V55_Log_Translation\\script.js';
     let script = fs.readFileSync(scriptPath, 'utf8');
     
     // Remove the HTML generation

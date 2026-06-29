@@ -1,6 +1,6 @@
 const TRANSLATIONS = {
     ko: {
-        title: 'AMR 물류이송 시뮬레이션 Layout_V52_Multi_Language',
+        title: 'AMR 물류이송 시뮬레이션 Layout_V55_Log_Translation',
         btn_start: '▶ 시작',
         btn_pause: '⏸ 일시정지',
         btn_reset: '초기화',
@@ -161,7 +161,7 @@ const TRANSLATIONS = {
         amr_st_WAITING_OUTPUT_TOP: '상단 배출 대기존 대기 중'
     },
     en: {
-        title: 'AMR Logistics Simulation Layout_V52_Multi_Language',
+        title: 'AMR Logistics Simulation Layout_V55_Log_Translation',
         btn_start: '▶ Start',
         btn_pause: '⏸ Pause',
         btn_reset: 'Reset',
@@ -322,7 +322,7 @@ const TRANSLATIONS = {
         amr_st_WAITING_OUTPUT_TOP: 'Waiting at Top Output Zone'
     },
     zh: {
-        title: 'AMR 物流运输模拟 Layout_V52_Multi_Language',
+        title: 'AMR 物流运输模拟 Layout_V55_Log_Translation',
         btn_start: '▶ 开始',
         btn_pause: '⏸ 暂停',
         btn_reset: '重置',
@@ -483,7 +483,7 @@ const TRANSLATIONS = {
         amr_st_WAITING_OUTPUT_TOP: '在上方排出等待区等待'
     },
     vi: {
-        title: 'Mô phỏng Vận chuyển AMR Layout_V52_Multi_Language',
+        title: 'Mô phỏng Vận chuyển AMR Layout_V55_Log_Translation',
         btn_start: '▶ Bắt đầu',
         btn_pause: '⏸ Tạm dừng',
         btn_reset: 'Cài lại',

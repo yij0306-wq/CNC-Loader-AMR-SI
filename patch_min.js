@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 try {
-    const basePath = 'c:\\Users\\user\\Desktop\\Project\\5. CNC Loader\\Layout_V52_Multi_Language';
+    const basePath = 'c:\\Users\\user\\Desktop\\Project\\5. CNC Loader\\Layout_V55_Log_Translation';
     
     // 1. Update index.html
     let htmlPath = basePath + '\\index.html';
