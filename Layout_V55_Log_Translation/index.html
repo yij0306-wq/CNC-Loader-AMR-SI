@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-i18n="title">AMR 물류이송 시뮬레이션 Layout_V52_Multi_Language</title>
+    <link rel="stylesheet" href="styles.css?v=2">
+</head>
+<body>
+    <div class="dashboard">
+        <header>
+            <div class="title-group">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <h1 id="main-title" style="margin:0;" data-i18n="title">AMR 물류이송 시뮬레이션 Layout_V52_Multi_Language</h1>
+                    <div style="display:flex; gap:8px;">
+                        <select id="lang-selector" class="select-box" style="padding:4px; font-weight:bold; border-color:#94a3b8; border-radius:4px;" onchange="setLanguage(this.value)">
+                            <option value="ko">🇰🇷 한국어</option>
+                            <option value="en">🇺🇸 English</option>
+                            <option value="zh">🇨🇳 中文</option>
+                            <option value="vi">🇻🇳 Tiếng Việt</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="clock-panel">
+                    <div class="clock-box"><span class="clock-label">SIMULATION TIME</span> <span id="clock-env" class="clock-time">00:00:00</span></div>
+                    <div class="clock-box" style="margin-top:5px; background:#1e293b; border-color:#334155;"><span class="clock-label" style="color:#fcd34d">LOADER WAIT</span> <span id="val-wait" class="clock-time" style="color:#fff">00:00:00</span></div>
+                </div>
+                <div class="stats-panel" id="statsPanelContainer" style="display:flex; flex-wrap:wrap; gap:5px;">
+                    <!-- 동적 생성 -->
+                    <div class="btn-group-reset" style="display:flex; gap:5px; margin-left:20px; align-items:center;">
+                        <button id="btn-soft-reset" class="btn btn-reset-large" style="background:#ef4444; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);" data-i18n="btn_reset">데이터 초기화</button>
+                        <button id="btn-hard-reset" class="btn btn-reset-large" style="background:#b91c1c; color:white; border:none; border-radius:6px; font-size:13px; padding:8px 15px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);" data-i18n="btn_sim_reset">시스템 초기화</button>
+                    </div>
+                </div>
+            </div>
+            <div class="controls-panel" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                
+                <!-- [그룹 1] 시뮬레이션 조작 (Simulation Control) -->
+                <div class="folder-group" style="border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 8px; background: #f8fafc; display: flex; gap: 8px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="font-size:12px; font-weight:bold; color:#475569; writing-mode:vertical-lr; text-align:center; letter-spacing:1px; transform:none;">시뮬레이션</div>
+                    <div class="controls-group" style="background: rgba(37, 99, 235, 0.1); border: 1px solid #3b82f6; border-radius: 6px; padding: 0 10px; flex-direction: row;">
+                        <span class="label" style="color:#2563eb; font-weight:800;" data-i18n="ui_sim_target">🎯 조업 목표</span>
+                        <select id="select-target-time" class="select-box" style="width:80px; border-color:#3b82f6;">
+                            <option value="0" data-i18n="ui_no_use">사용 안함</option>
+                            <option value="8">8<span data-i18n="ui_hours">시간</span></option>
+                            <option value="10" selected>10<span data-i18n="ui_hours">시간</span></option>
+                            <option value="12">12<span data-i18n="ui_hours">시간</span></option>
+                            <option value="16">16<span data-i18n="ui_hours">시간</span></option>
+                            <option value="20">20<span data-i18n="ui_hours">시간</span></option>
+                            <option value="24">24<span data-i18n="ui_hours">시간</span></option>
+                        </select>
+                    </div>
+                    <div class="controls-group" style="padding:0;">
+                        <button id="btn-start" class="btn btn-success" style="background:#22c55e; color:white;" data-i18n="btn_start">▶ 시작</button>
+                        <button id="btn-backward" class="btn" style="background:#6366f1; color:white;" data-i18n="ui_backward">◀ 뒤로</button>
+                        <button id="btn-pause" class="btn active" data-i18n="btn_pause">⏸ 정지</button>
+                    </div>
+                    <div class="controls-group" style="padding:0;">
+                        <button id="btn-1x" class="btn active">1x</button>
+                        <button id="btn-10x" class="btn">10x</button>
+                        <button id="btn-20x" class="btn">20x</button>
+                        <button id="btn-50x" class="btn">50x</button>
+                        <button id="btn-100x" class="btn">100x</button>
+                        <button id="btn-200x" class="btn">200x</button>
+                        <button id="btn-300x" class="btn">300x</button>
+                    <div class="controls-group" style="padding:0;">
+                        <button id="btn-model-manage" class="btn" style="background:#0284c7; color:white; font-weight:bold;" data-i18n="btn_model_manage">⚙️ 기종 관리</button>
+                    </div>
+                    <button id="btn-instant-complete" class="btn" style="background:#8b5cf6; color:white; border:none; border-radius:6px; font-size:13px; padding:6px 12px; cursor:pointer; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);" data-i18n="ui_instant">⚡ 즉시 완료</button>
+                </div>
+
+                <!-- [그룹 2] 알고리즘 제어 (Algorithm) -->
+                <div class="folder-group" style="border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 8px; background: #f8fafc; display: flex; gap: 8px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="font-size:12px; font-weight:bold; color:#475569; writing-mode:vertical-lr; text-align:center; letter-spacing:1px; transform:none;" data-i18n="ui_algo_ctrl">알고리즘 제어</div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_priority">우선순위 룰</span>
+                        <select id="select-priority" class="select-box">
+                            <option value="LOADED_YIELDS" data-i18n="ui_pri_loaded">적재차량 양보</option>
+                            <option value="ID_PRIORITY" data-i18n="ui_pri_id">호기 번호순 우선</option>
+                            <option value="MAIN_LANE_DIST" data-i18n="ui_pri_dist">중앙거리 우선</option>
+                        </select>
+                    </div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_evade_mode">회피 모드</span>
+                        <button id="btn-evade-cnc" class="btn btn-evade" data-i18n="ui_ev_cnc">CNC존</button>
+                        <button id="btn-evade-siding" class="btn btn-evade" data-i18n="ui_ev_siding">회피존만</button>
+                        <button id="btn-evade-both" class="btn btn-evade active" data-i18n="ui_ev_both">둘다</button>
+                    </div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_ev_detect">회피 감지</span>
+                        <input type="range" id="input-detect-range" min="50" max="400" step="10" value="120" style="width:60px;">
+                        <span id="val-detect-range" style="color:#94a3b8; font-size:11px; margin-left:2px;">120px</span>
+                    </div>
+                    <div class="controls-group corr-speed-group" id="corrSpeedGroup" style="padding-right:0;">
+                        <label style="cursor:pointer; display:flex; align-items:center; gap:4px;">
+                            <span class="label" style="color:#0e7490; font-weight:800;" data-i18n="ui_ev_watch">👀 회피관찰 1배속</span>
+                            <input type="checkbox" id="checkbox-evasion-watch" style="width:14px; height:14px; cursor:pointer;">
+                        </label>
+                        <span id="corr-speed-status" class="corr-speed-badge corr-speed-off">OFF</span>
+                    </div>
+                </div>
+
+                <!-- [그룹 3] 시스템 환경 (System Env) -->
+                <div class="folder-group" style="border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 8px; background: #f8fafc; display: flex; gap: 8px; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                    <div style="font-size:12px; font-weight:bold; color:#475569; writing-mode:vertical-lr; text-align:center; letter-spacing:1px; transform:none;" data-i18n="ui_sys_env">시스템 환경</div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_path_line">경로 라인</span>
+                        <button id="btn-lane1" class="btn active" data-i18n="ui_1_line">1라인</button>
+                        <button id="btn-lane2" class="btn" data-i18n="ui_2_line_add">+2라인 추가</button>
+                    </div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_amr_qty">AMR 대수</span>
+                        <button id="btn-amr1" class="btn">1<span data-i18n="ui_qty_unit">대</span></button>
+                        <button id="btn-amr2" class="btn active">2<span data-i18n="ui_qty_unit">대</span></button>
+                        <button id="btn-amr3" class="btn">3<span data-i18n="ui_qty_unit">대</span></button>
+                        <button id="btn-amr4" class="btn">4<span data-i18n="ui_qty_unit">대</span></button>
+                    </div>
+                    <div class="controls-group">
+                        <span class="label" data-i18n="ui_eject_thres">배출칸수</span>
+                        <input type="number" id="input-call-threshold" min="2" max="9" value="8" class="input-number" style="width:30px;">
+                        <span style="color:#64748b; font-size:11px;" data-i18n="ui_level_unit">단</span>
+                    </div>
+                    <div class="controls-group" style="border:none;">
+                        <span class="label" style="color:#2563eb; font-weight:800;" data-i18n="ui_pre_eject">🔔 사전배출</span>
+                        <input type="checkbox" id="check-pre-eject" style="width:16px; height:16px;">
+                    </div>
+                </div>
+            </div>
+        </header>
+        <div class="settings-container">
+            <div class="loader-grid" id="loaderGrid"></div>
+            <div class="amr-grid" id="amrGrid"></div>
+        </div>
+        <div class="canvas-container simple-bg">
+            <canvas id="simCanvas" width="2800" height="750"></canvas>
+        </div>
+    </div>
+
+    <!-- [NEW] 대기지연 상세 로그 모달 -->
+    <div id="logModal" class="modal-overlay">
+        <div class="modal-container">
+            <button class="modal-close" onclick="window.closeLogModal()">&times;</button>
+            <div id="logContent"></div>
+            <div style="margin-top:24px; text-align:right;">
+                <button class="btn" onclick="window.closeLogModal()" style="background:#f1f5f9; color:#475569; padding:8px 20px;" data-i18n="btn_close">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NEW] 기종(Model) 관리 모달 -->
+    <div id="modelManageModal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 500px;">
+            <button class="modal-close" onclick="document.getElementById('modelManageModal').style.display='none'">&times;</button>
+            <h2 style="margin-top:0; color:#1e293b; border-bottom:2px solid #e2e8f0; padding-bottom:10px; font-size:18px;" data-i18n="btn_model_manage">⚙️ 기종 관리</h2>
+            <div id="modelManageContent">
+                <div style="font-size:11px; color:#ef4444; margin-bottom:10px; font-weight:bold;" data-i18n="lbl_loader_ct_notice">
+                    ※ 로더(Loader)의 실제 택타임은 입력하신 CNC C/T의 절반(나누기 2)으로 자동 적용됩니다.
+                </div>
+                <table style="width:100%; border-collapse:collapse; text-align:center; font-size:13px; margin-bottom:15px;">
+                    <thead>
+                        <tr style="background:#f1f5f9; border-bottom:1px solid #cbd5e1;">
+                            <th style="padding:8px;" data-i18n="lbl_model_name">기종명 (Model Name)</th>
+                            <th style="padding:8px;" data-i18n="lbl_cnc_ct">CNC C/T (초)</th>
+                            <th style="padding:8px;" data-i18n="lbl_action">작업</th>
+                        </tr>
+                    </thead>
+                    <tbody id="modelTableBody">
+                        <!-- 동적 생성 -->
+                    </tbody>
+                </table>
+                <div style="display:flex; gap:10px; align-items:center; background:#f8fafc; padding:10px; border-radius:6px; border:1px solid #e2e8f0;">
+                    <input type="text" id="newModelName" data-i18n-placeholder="lbl_new_model" placeholder="새 기종명 입력" style="flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">
+                    <input type="number" id="newModelCT" placeholder="CNC C/T" style="width:80px; padding:6px; border:1px solid #cbd5e1; border-radius:4px;">
+                    <button id="btn-add-model" class="btn" style="background:#10b981; color:white; padding:6px 15px;" data-i18n="btn_add_model">추가</button>
+                </div>
+            </div>
+            <div style="margin-top:24px; text-align:right;">
+                <button class="btn" onclick="document.getElementById('modelManageModal').style.display='none'" style="background:#f1f5f9; color:#475569; padding:8px 20px;" data-i18n="btn_close">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- [NEW] 시뮬레이션 종료 요약 리포트 모달 -->
+    <div id="reportModal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 600px;">
+            <button class="modal-close" onclick="document.getElementById('reportModal').style.display='none'">&times;</button>
+            <div id="reportContent"></div>
+            <div style="margin-top:24px; text-align:right;">
+                <button class="btn" onclick="document.getElementById('reportModal').style.display='none'" style="background:#3b82f6; color:#ffffff; padding:8px 20px;" data-i18n="btn_confirm">확인</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="i18n.js"></script>
+    <script src="script.js?v=2"></script>
+    
+
+
+    <!-- Video Modal Floating Button -->
+    <button id="btn-video-modal" class="btn" style="position:fixed; bottom:20px; right:20px; background:#4f46e5; color:white; border-radius:50px; padding:10px 20px; font-weight:bold; box-shadow:0 4px 10px rgba(0,0,0,0.3); z-index:9999;" onclick="document.getElementById('videoModal').style.display='flex'">
+        🎬 물류 영상 보기
+    </button>
+
+    <!-- Video Modal -->
+    <div id="videoModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.8); z-index:10000; justify-content:center; align-items:center;">
+        <div style="background:#fff; border-radius:12px; padding:20px; width:80%; max-width:800px; position:relative;">
+            <button class="btn" style="position:absolute; top:-15px; right:-15px; background:#ef4444; color:white; border-radius:50%; width:40px; height:40px; font-size:16px; font-weight:bold;" onclick="document.getElementById('videoModal').style.display='none'; document.getElementById('amr-video').pause();">X</button>
+            <h2 style="margin-top:0;">AMR 물류 영상 참고</h2>
+            <video id="amr-video" controls style="width:100%; border-radius:8px;">
+                <source src="./AMR_video.mp4" type="video/mp4">
+                브라우저가 동영상을 지원하지 않습니다.
+            </video>
+        </div>
+    </div>
+</body>
+</html>
